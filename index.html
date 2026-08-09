@@ -5432,21 +5432,9 @@
     let currentLaporanEkskulTab = 'kehadiran';
     let currentCatatanMode = 'tanggal';
 
-    // Load dropdown ekskul untuk laporan
-    function loadEkskulDropdownLaporan() {
-      google.script.run
-        .withSuccessHandler(function (ekskulList) {
-          const select = document.getElementById('laporanEkskulSelect');
-          if (!select) return;
-
-          let options = '<option value="">-- Pilih Ekskul --</option>';
-          ekskulList.forEach(e => {
-            options += `<option value="${e.id}">${e.nama}</option>`;
-          });
-          select.innerHTML = options;
-        })
-        .getMasterEkskul();
-    }
+    // Load dropdown ekskul untuk laporan — implementasi di Laporan.js (Supabase)
+    // Fungsi ini akan di-override oleh loadEkskulDropdownLaporan() dari Laporan.js
+    // saat script Laporan.js dimuat.
 
     // Load laporan ekskul
     function loadLaporanEkskul() {
@@ -5501,10 +5489,10 @@
       }
     }
 
-    // Load laporan kehadiran
+    // Load laporan kehadiran — delegate ke Laporan.js (Supabase)
     function loadLaporanKehadiran(ekskulId, tahunAjaran, filterKelas = '') {
-      // Kosongkan area preview
-      document.getElementById('kehadiranPreview').innerHTML = '';
+      // Fungsi ini sudah dipindahkan ke Laporan.js
+      // Dipanggil dari sana via loadLaporanEkskul()
     }
 
     // Switch mode catatan
@@ -5531,137 +5519,20 @@
       }
     }
 
-    // Load laporan catatan
+    // Load laporan catatan — delegate ke Laporan.js (Supabase)
     function loadLaporanCatatan(ekskulId, tahunAjaran, mode, filterKelas = '') {
-      // Kosongkan area preview
-      document.getElementById('catatanPreview').innerHTML = '';
+      // Fungsi ini sudah dipindahkan ke Laporan.js
+      // Dipanggil dari sana via loadLaporanEkskul()
     }
 
-    // Download PDF Kehadiran
+    // Download PDF Kehadiran — delegate ke Laporan.js (Supabase)
     function downloadLaporanKehadiran() {
-      const ekskulId = document.getElementById('laporanEkskulSelect').value;
-      const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
-      const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
-
-      if (!ekskulId || !tahunAjaran) {
-        showError('Pilih ekskul dan tahun ajaran!');
-        return;
-      }
-
-      const btn = document.getElementById('btnDownloadKehadiran');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ MENYIAPKAN...';
-      } else {
-        showLoading(true, 'Sedang menyiapkan laporan, mohon tunggu (maksimal 3 menit)...');
-      }
-
-      const timeoutId = setTimeout(() => {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '📥 DOWNLOAD PDF KEHADIRAN';
-        } else {
-          showLoading(false);
-        }
-        showError('Permintaan waktu habis (Timeout). Data mungkin terlalu besar atau koneksi lambat.');
-      }, 180000);
-      google.script.run
-        .withSuccessHandler(function (r) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '📥 DOWNLOAD PDF KEHADIRAN';
-          } else {
-            showLoading(false);
-          }
-          if (r.success) {
-            openReportAndPrint(r.html);
-          } else {
-            showError(r.error || 'Gagal membuat PDF');
-          }
-        })
-        .withFailureHandler(function (e) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '📥 DOWNLOAD PDF KEHADIRAN';
-          } else {
-            showLoading(false);
-          }
-            showError('Gagal: ' + e);
-        })
-        .downloadLaporanKehadiranEkskul(ekskulId, tahunAjaran, filterKelas);
+      downloadLaporanKehadiranEkskul();
     }
 
-    // Download PDF Catatan
+    // Download PDF Catatan — delegate ke Laporan.js (Supabase)
     function downloadLaporanCatatan() {
-      const ekskulId = document.getElementById('laporanEkskulSelect').value;
-      const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
-      const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
-
-      if (!ekskulId || !tahunAjaran) {
-        showError('Pilih ekskul dan tahun ajaran!');
-        return;
-      }
-
-      // Tentukan mode yang aktif
-      const modeTanggal = document.getElementById('modeTanggalBtn').classList.contains('active');
-
-      const btn = document.getElementById('btnDownloadCatatan');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ MENYIAPKAN...';
-      } else {
-        showLoading(true, 'Sedang menyiapkan laporan, mohon tunggu (maksimal 3 menit)...');
-      }
-
-      const timeoutId = setTimeout(() => {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '📥 DOWNLOAD PDF CATATAN';
-        } else {
-          showLoading(false);
-        }
-        showError('Permintaan waktu habis (Timeout). Data mungkin terlalu besar atau koneksi lambat.');
-      }, 180000);
-
-      // Handler sukses digunakan bersama untuk kedua mode
-      function onSuccess(r) {
-        clearTimeout(timeoutId);
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '📥 DOWNLOAD PDF CATATAN';
-        } else {
-          showLoading(false);
-        }
-        if (r.success) {
-          openReportAndPrint(r.html);
-        } else {
-          showError(r.error || 'Gagal membuat PDF');
-        }
-      }
-
-      function onFailure(e) {
-        clearTimeout(timeoutId);
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '📥 DOWNLOAD PDF CATATAN';
-        } else {
-          showLoading(false);
-        }
-      }
-
-      if (modeTanggal) {
-        google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
-          .downloadLaporanCatatanPerTanggal(ekskulId, tahunAjaran, filterKelas);
-      } else {
-        google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
-          .downloadLaporanCatatanPerSiswa(ekskulId, tahunAjaran, filterKelas);
-      }
+      downloadLaporanCatatanEkskul();
     }
 
 
@@ -7767,8 +7638,8 @@
   <!-- =================================================== -->
 
   <?!= include("App"); ?>
-  <script src="Laporan.js?v=5"></script>
-  <script src="DashboardPimpinan.js?v=4"></script>
+  <script src="Laporan.js?v=6"></script>
+  <script src="DashboardPimpinan.js?v=5"></script>
 
 </body>
 
