@@ -2814,7 +2814,7 @@
                       <th>NIS</th>
                       <th>Nama</th>
                       <th>Kelas</th>
-                      <th colspan="6">Status Absensi + 🕌 Shalat Kmrn</th>
+                      <th colspan="6">Status</th>
                       <th>Catatan</th>
                     </tr>
                   </thead>
@@ -2822,7 +2822,7 @@
                 </table>
               </div>
               <div class="bottom-button">
-                <button class="btn btn-primary" onclick="simpanAbsenEkskul()">💾 SIMPAN ABSENSI & SHALAT</button>
+                <button class="btn btn-primary" onclick="simpanAbsenEkskul()">💾 SIMPAN ABSENSI EKSKUL</button>
               </div>
             </div>
           </div>
@@ -2850,7 +2850,7 @@
                       <th>NIS</th>
                       <th>Nama</th>
                       <th>Kelas</th>
-                      <th colspan="6">Status Absensi + 🕌 Shalat Kmrn</th>
+                      <th colspan="6">Status</th>
                       <th>Catatan</th>
                     </tr>
                   </thead>
@@ -3932,34 +3932,28 @@
         showError('Permintaan waktu habis (Timeout). Data mungkin terlalu besar atau koneksi lambat.');
       }, 180000);
 
-      google.script.run
-        .withSuccessHandler(function (r) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '🔍 PRATINJAU';
-          } else {
-            showLoading(false);
-          }
-          if (r.success) {
-            document.getElementById('previewSiswaArea').style.display = 'block';
-            // Hanya ambil isi body untuk preview
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(r.html, 'text/html');
-            document.getElementById('previewSiswaArea').innerHTML = doc.body.innerHTML;
-          } else { showError(r.error); }
-        })
-        .withFailureHandler(function (e) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '🔍 PRATINJAU';
-          } else {
-            showLoading(false);
-          }
-            showError('Gagal: ' + e);
-        })
-        .downloadLaporanOrangTuaPdf(nis, kelas, bulan, tahun);
+      fetchDataLaporanSiswa(nis, kelas, bulan, tahun).then(data => {
+        clearTimeout(timeoutId);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '🔍 PRATINJAU';
+        } else {
+          showLoading(false);
+        }
+        
+        const html = generateHtmlLaporanSiswa(data);
+        document.getElementById('previewSiswaArea').style.display = 'block';
+        document.getElementById('previewSiswaArea').innerHTML = html;
+      }).catch(err => {
+        clearTimeout(timeoutId);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '🔍 PRATINJAU';
+        } else {
+          showLoading(false);
+        }
+        showError('Gagal: ' + err.message);
+      });
     }
 
 
@@ -3989,32 +3983,27 @@
         showError('Permintaan waktu habis (Timeout). Coba lagi beberapa saat lagi.');
       }, 180000);
 
-      google.script.run
-        .withSuccessHandler(function (r) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '📥 DOWNLOAD PDF';
-          } else {
-            showLoading(false);
-          }
-          if (r.success) {
-            openReportAndPrint(r.html);
-          } else {
-            showError(r.error);
-          }
-        })
-        .withFailureHandler(function (e) {
-          clearTimeout(timeoutId);
-          if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '📥 DOWNLOAD PDF';
-          } else {
-            showLoading(false);
-          }
-            showError('Gagal: ' + e);
-        })
-        .downloadLaporanOrangTuaPdf(nis, kelas, bulan, tahun);
+      fetchDataLaporanSiswa(nis, kelas, bulan, tahun).then(data => {
+        clearTimeout(timeoutId);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '📥 DOWNLOAD PDF';
+        } else {
+          showLoading(false);
+        }
+        
+        const html = generateHtmlLaporanSiswa(data);
+        openReportAndPrint(html);
+      }).catch(err => {
+        clearTimeout(timeoutId);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '📥 DOWNLOAD PDF';
+        } else {
+          showLoading(false);
+        }
+        showError('Gagal: ' + err.message);
+      });
     }
 
 
