@@ -5121,7 +5121,11 @@
            if (!guruInput[kelas][mapel][jenis]) { guruInput[kelas][mapel][jenis] = new Set(); }
            mapelPerKelas[kelas].add(mapel);
            jenisPerMapelKelas[kelas][mapel].add(jenis);
-           guruInput[kelas][mapel][jenis].add(nis);
+           
+           const val = row.nilai;
+           if (val !== null && val !== undefined && val !== '' && val !== 0 && val !== '0') {
+             guruInput[kelas][mapel][jenis].add(nis);
+           }
         });
         const hasil = [];
         for (const kelas in guruInput) {
