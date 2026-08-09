@@ -288,11 +288,31 @@ async function renderPimpinanKehadiran(forceRefresh = false) {
       }
     }
 
-    // Ambil Daftar Kelas dari tabel kelas, jika kosong/gagal gunakan dari App.config
+    // Ambil data_siswa untuk mapping NIS -> Kelas Reguler
+    const { data: siswaData } = await supaClient.from('data_siswa').select('nis, kelas');
+    const siswaMap = {};
+    if (siswaData) {
+      siswaData.forEach(s => {
+        if (s.nis) siswaMap[s.nis.toString()] = s.kelas;
+      });
+    }
+
+    // Timpa kelas di absensi dengan kelas reguler jika ada
+    allAbsensi.forEach(d => {
+      if (d.nis && siswaMap[d.nis.toString()]) {
+        d.kelas = siswaMap[d.nis.toString()];
+      }
+    });
+
     const { data: kelasData } = await supaClient.from('data_kelas').select('kelas').order('kelas', { ascending: true });
     let daftarKelas = [];
     if (kelasData && kelasData.length > 0) {
-      daftarKelas = kelasData.map(k => k.kelas);
+      // Filter out moving classes and E4, E5 (same as bobot)
+      daftarKelas = kelasData.map(k => k.kelas).filter(k => {
+        if (k === 'E4' || k === 'E5') return false;
+        if (/[A-Z]{3}/.test(k)) return false; 
+        return true;
+      });
     } else if (App && App.config && App.config.kelasReguler) {
       daftarKelas = App.config.kelasReguler;
     }
@@ -1221,6 +1241,15 @@ async function renderPimpinanSikap(forceRefresh = false) {
   showLoading(true, 'Memuat Data Catatan Sikap...');
 
   try {
+    // Ambil data_siswa untuk mapping NIS -> Kelas Reguler
+    const { data: siswaData } = await supaClient.from('data_siswa').select('nis, kelas');
+    const siswaMap = {};
+    if (siswaData) {
+      siswaData.forEach(s => {
+        if (s.nis) siswaMap[s.nis.toString()] = s.kelas;
+      });
+    }
+
     const { data, error } = await supaClient
       .from('catatan')
       .select('nis, nama, kelas, poin'); // Asumsi semua yg masuk tabel catatan adalah poin positif
@@ -1229,6 +1258,11 @@ async function renderPimpinanSikap(forceRefresh = false) {
 
     const summaryMap = {};
     (data || []).forEach(row => {
+      // Override kelas dengan kelas reguler jika ada
+      if (row.nis && siswaMap[row.nis.toString()]) {
+        row.kelas = siswaMap[row.nis.toString()];
+      }
+      
       const poin = parseInt(row.poin) || 0;
       if (!summaryMap[row.nis]) {
         summaryMap[row.nis] = { nama: row.nama, kelas: row.kelas, totalPoin: 0 };
@@ -1311,9 +1345,14 @@ async function renderPimpinanBobot(forceRefresh = false) {
   const { data: kelasData } = await supaClient.from('data_kelas').select('kelas').order('kelas', { ascending: true });
   let daftarKelas = [];
   if (kelasData && kelasData.length > 0) {
-    daftarKelas = kelasData.map(k => k.kelas);
+    // Filter out E4, E5 and moving classes (which typically contain 3 uppercase letters like KIM, FIS, BIO, EKO)
+    daftarKelas = kelasData.map(k => k.kelas).filter(k => {
+      if (k === 'E4' || k === 'E5') return false;
+      if (/[A-Z]{3}/.test(k)) return false; // Filter moving class (e.g. F1KIM, F2FIS)
+      return true;
+    });
   } else {
-    daftarKelas = ['E1', 'E2', 'E3', 'E4', 'E5', 'F1KIM', 'F1FIS', 'F1BIO', 'F2KIM', 'F2FIS', 'F2BIO']; // Fallback
+    daftarKelas = ['E1', 'E2', 'F1.1', 'F1.2', 'F2.1']; // Fallback yang akurat
   }
   
   // Ambil kelas pertama dari daftar jika tidak ada yg terpilih
@@ -1334,17 +1373,24 @@ async function renderPimpinanBobot(forceRefresh = false) {
   showLoading(true, 'Memuat Data Bobot Siswa...');
 
   try {
+    // Ambil data_siswa untuk mapping NIS -> Kelas Reguler
+    const { data: siswaData } = await supaClient.from('data_siswa').select('nis, kelas');
+    const siswaMap = {};
+    if (siswaData) {
+      siswaData.forEach(s => {
+        if (s.nis) siswaMap[s.nis.toString()] = s.kelas;
+      });
+    }
+
     const { data: catatanData, error: errCatatan } = await supaClient
       .from('catatan')
-      .select('nis, nama, kelas, poin, tanggal')
-      .eq('kelas', kelas);
+      .select('nis, nama, kelas, poin, tanggal');
 
     if (errCatatan) throw errCatatan;
 
     const { data: pelanggaranData, error: errPelanggaran } = await supaClient
       .from('pelanggaran')
-      .select('nis, nama, kelas, poin, tanggal')
-      .eq('kelas', kelas);
+      .select('nis, nama, kelas, poin, tanggal');
 
     if (errPelanggaran) throw errPelanggaran;
     
@@ -1355,6 +1401,13 @@ async function renderPimpinanBobot(forceRefresh = false) {
       if (!item.tanggal) return;
       const [y, m, d] = item.tanggal.split('-');
       if (bulan !== 'ALL' && parseInt(m) !== parseInt(bulan)) return;
+      
+      // Override kelas dari siswaMap
+      if (item.nis && siswaMap[item.nis.toString()]) {
+        item.kelas = siswaMap[item.nis.toString()];
+      }
+      // Pastikan kelas sesuai dengan filter yang dipilih
+      if (item.kelas !== kelas) return;
 
       if (!summaryMap[item.nis]) {
         summaryMap[item.nis] = { nama: item.nama, kelas: item.kelas, positif: 0, pelanggaran: 0, totalBobot: 0 };
@@ -1367,6 +1420,13 @@ async function renderPimpinanBobot(forceRefresh = false) {
       if (!item.tanggal) return;
       const [y, m, d] = item.tanggal.split('-');
       if (bulan !== 'ALL' && parseInt(m) !== parseInt(bulan)) return;
+      
+      // Override kelas dari siswaMap
+      if (item.nis && siswaMap[item.nis.toString()]) {
+        item.kelas = siswaMap[item.nis.toString()];
+      }
+      // Pastikan kelas sesuai dengan filter yang dipilih
+      if (item.kelas !== kelas) return;
 
       if (!summaryMap[item.nis]) {
         summaryMap[item.nis] = { nama: item.nama, kelas: item.kelas, positif: 0, pelanggaran: 0, totalBobot: 0 };
