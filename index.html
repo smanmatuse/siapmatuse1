@@ -2871,43 +2871,81 @@
       loadEkskulDropdown();
     }
 
-    function loadEkskulDropdown() {
-      google.script.run
-        .withSuccessHandler(function (ekskulList) {
-          const select = document.getElementById('ekskulSelect');
-          if (!select) return;
-
-          let options = '<option value="">-- Pilih Ekskul --</option>';
-          ekskulList.forEach(e => {
-            options += `<option value="${e.id}">${e.nama}</option>`;
-          });
-          select.innerHTML = options;
-        })
-        .getMasterEkskul();
+    async function loadEkskulDropdown() {
+      const select = document.getElementById('ekskulSelect');
+      if (!select) return;
+      select.innerHTML = '<option value="">-- Memuat Ekskul --</option>';
+      
+      try {
+        const { data, error } = await supaClient
+          .from('master_ekskul')
+          .select('id, nama_ekskul')
+          .order('nama_ekskul', { ascending: true });
+          
+        if (error) throw error;
+        
+        let options = '<option value="">-- Pilih Ekskul --</option>';
+        data.forEach(e => {
+          options += `<option value="${e.id}">${e.nama_ekskul}</option>`;
+        });
+        select.innerHTML = options;
+      } catch (err) {
+        select.innerHTML = '<option value="">Gagal memuat ekskul</option>';
+        console.error('Error loadEkskulDropdown:', err);
+      }
     }
 
-    function loadPesertaEkskul() {
-      const ekskulId = document.getElementById('ekskulSelect').value;
+    async function loadPesertaEkskul() {
+      const ekskulSelect = document.getElementById('ekskulSelect');
+      const ekskulId = ekskulSelect.value;
+      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
 
       if (!ekskulId || !tahunAjaran) return;
 
       showLoading(true);
-      google.script.run
-        .withSuccessHandler(function (r) {
-          showLoading(false);
-          if (r.success) {
-            App.pesertaData = r.siswa;
-            window.pesertaTerfilter = App.pesertaData;
-          } else {
-            showError(r.error || 'Gagal memuat peserta');
+
+      try {
+        const { data: siswaEkskulData, error: errSiswaEkskul } = await supaClient
+          .from('siswa_ekskul')
+          .select('nis, nama, nama_ekskul')
+          .eq('nama_ekskul', ekskulNama);
+          
+        if (errSiswaEkskul) throw errSiswaEkskul;
+        
+        let peserta = [];
+        if (siswaEkskulData && siswaEkskulData.length > 0) {
+          const nisList = siswaEkskulData.map(s => s.nis);
+          
+          const { data: dataSiswa, error: errSiswa } = await supaClient
+            .from('data_siswa')
+            .select('nis, kelas')
+            .in('nis', nisList);
+            
+          if (errSiswa) throw errSiswa;
+          
+          const kelasMap = {};
+          if (dataSiswa) {
+            dataSiswa.forEach(s => kelasMap[s.nis] = s.kelas);
           }
-        })
-        .withFailureHandler(function (e) {
-          showLoading(false);
-            showError('Gagal: ' + e);
-        })
-        .getPesertaEkskul(ekskulId, tahunAjaran, '');
+          
+          peserta = siswaEkskulData.map(s => ({
+            nis: s.nis,
+            nama: s.nama,
+            kelas: kelasMap[s.nis] || '-'
+          }));
+          
+          peserta.sort((a, b) => a.nama.localeCompare(b.nama));
+        }
+        
+        showLoading(false);
+        App.pesertaData = peserta;
+        window.pesertaTerfilter = App.pesertaData;
+        
+      } catch (err) {
+        showLoading(false);
+        showError('Gagal memuat peserta: ' + err.message);
+      }
     }
 
     function filterTabelEkskul() {
@@ -2925,8 +2963,10 @@
       }
     }
 
-    function loadSiswaEkskul() {
-      const ekskulId = document.getElementById('ekskulSelect').value;
+    async function loadSiswaEkskul() {
+      const ekskulSelect = document.getElementById('ekskulSelect');
+      const ekskulId = ekskulSelect.value;
+      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('absenTanggal').value;
 
@@ -2937,26 +2977,90 @@
 
       showLoading(true);
 
-      // Ambil data peserta dan absen sekaligus
-      google.script.run
-        .withSuccessHandler(function (result) {
-          showLoading(false);
-          if (result.success) {
-            App.pesertaData = result.siswa;
-            App.existingData = result.existingData;
-
-            filterTabelEkskul(); // Apply filter kelas
-            tampilkanTabelEkskul(window.pesertaTerfilter, App.existingData);
-            document.getElementById('absenEkskulContainer').style.display = 'block';
-          } else {
-            showError(result.error || 'Gagal memuat data');
+      try {
+        const tahunInt = parseInt(tahunAjaran);
+        
+        // 1. Ambil data peserta ekskul
+        const { data: siswaEkskulData, error: errSiswaEkskul } = await supaClient
+          .from('siswa_ekskul')
+          .select('nis, nama, nama_ekskul')
+          .eq('nama_ekskul', ekskulNama);
+          
+        if (errSiswaEkskul) throw errSiswaEkskul;
+        
+        let peserta = [];
+        if (siswaEkskulData && siswaEkskulData.length > 0) {
+          const nisList = siswaEkskulData.map(s => s.nis);
+          
+          // 2. Ambil kelas dari data_siswa
+          const { data: dataSiswa, error: errSiswa } = await supaClient
+            .from('data_siswa')
+            .select('nis, kelas')
+            .in('nis', nisList);
+            
+          if (errSiswa) throw errSiswa;
+          
+          const kelasMap = {};
+          if (dataSiswa) {
+            dataSiswa.forEach(s => kelasMap[s.nis] = s.kelas);
           }
-        })
-        .withFailureHandler(function (e) {
-          showLoading(false);
-            showError('Gagal: ' + e);
-        })
-        .getPesertaDanAbsenEkskul(ekskulId, tahunAjaran, tanggal, '', 'input', App.user.profil.email);
+          
+          peserta = siswaEkskulData.map(s => ({
+            nis: s.nis,
+            nama: s.nama,
+            kelas: kelasMap[s.nis] || '-'
+          }));
+          
+          // Urutkan berdasarkan nama
+          peserta.sort((a, b) => a.nama.localeCompare(b.nama));
+        }
+
+        // 3. Ambil data absen
+        const { data: absenData, error: errAbsen } = await supaClient
+          .from('absen_ekskul')
+          .select('nis, status')
+          .eq('ekskul_id', ekskulId)
+          .eq('tanggal', tanggal)
+          .eq('tahun', tahunInt);
+          
+        if (errAbsen) throw errAbsen;
+        
+        // 4. Ambil data catatan
+        const { data: catatanData, error: errCatatan } = await supaClient
+          .from('catatan_ekskul')
+          .select('nis, catatan')
+          .eq('ekskul_id', ekskulId)
+          .eq('tanggal', tanggal)
+          .eq('tahun', tahunInt);
+          
+        if (errCatatan) throw errCatatan;
+
+        const existingData = {};
+        if (absenData) {
+          absenData.forEach(a => {
+            if (!existingData[a.nis]) existingData[a.nis] = {};
+            existingData[a.nis].status = a.status;
+          });
+        }
+        if (catatanData) {
+          catatanData.forEach(c => {
+            if (!existingData[c.nis]) existingData[c.nis] = {};
+            existingData[c.nis].catatan = c.catatan;
+          });
+        }
+
+        showLoading(false);
+        App.pesertaData = peserta;
+        App.existingData = existingData;
+
+        filterTabelEkskul(); // Apply filter kelas
+        tampilkanTabelEkskul(window.pesertaTerfilter, App.existingData);
+        document.getElementById('absenEkskulContainer').style.display = 'block';
+
+      } catch (err) {
+        showLoading(false);
+        showError('Gagal memuat data: ' + err.message);
+      }
     }
 
     function tampilkanTabelEkskul(siswaList, existingData) {
@@ -3029,7 +3133,6 @@
     function simpanAbsenEkskul() {
       const ekskulSelect = document.getElementById('ekskulSelect');
       const ekskulId = ekskulSelect.value;
-      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('absenTanggal').value;
 
@@ -3059,7 +3162,6 @@
           dataToSave.push({
             nis, nama, kelas,
             status, catatan,
-            ekskul: ekskulNama,
             tanggal: tanggal
           });
         }
@@ -3070,27 +3172,74 @@
         return;
       }
 
-      confirmAction(`Simpan ${dataToSave.length} data absensi ekskul?`, function () {
+      confirmAction(`Simpan ${dataToSave.length} data absensi ekskul?`, async function () {
         toggleButtonLoading('button[onclick="simpanAbsenEkskul()"]', true, '⏳ Menyimpan...');
-        google.script.run
-          .withSuccessHandler(function (r) {
-            toggleButtonLoading('button[onclick="simpanAbsenEkskul()"]', false);
-            if (r.success) {
-              showSuccess(`${r.jumlah} data tersimpan`);
-            } else {
-              showError(r.error || 'Gagal menyimpan');
-            }
-          })
-          .withFailureHandler(function (e) {
-            toggleButtonLoading('button[onclick="simpanAbsenEkskul()"]', false);
-              showError('Gagal: ' + e);
-          })
-          .simpanAbsenEkskulBatch(dataToSave.map(d => Object.assign(d, { userEmail: App.user.profil.email })));
+        
+        try {
+          const tahunInt = parseInt(tahunAjaran);
+          const nisList = dataToSave.map(d => d.nis);
+          
+          // 1. Delete absen lama untuk NIS terkait
+          await supaClient.from('absen_ekskul')
+            .delete()
+            .eq('nama_ekskul', ekskulNama)
+            .eq('tanggal', tanggal)
+            .in('nis', nisList);
+            
+          // 2. Insert absen baru
+          const absenInserts = dataToSave.map(d => ({
+            nama_ekskul: ekskulNama,
+            nis: d.nis,
+            nama: d.nama,
+            kelas: d.kelas,
+            tanggal: d.tanggal,
+            tahun: tahunInt,
+            status: d.status,
+            username_guru: App.user.username
+          }));
+          const { error: errAbsen } = await supaClient.from('absen_ekskul').insert(absenInserts);
+          if (errAbsen) throw errAbsen;
+          
+          // 3. Delete catatan lama
+          await supaClient.from('catatan_ekskul')
+            .delete()
+            .eq('nama_ekskul', ekskulNama)
+            .eq('tanggal', tanggal)
+            .in('nis', nisList);
+            
+          // 4. Insert catatan baru jika ada
+          const catatanInserts = dataToSave
+            .filter(d => d.catatan.trim() !== '')
+            .map(d => ({
+              nama_ekskul: ekskulNama,
+              nis: d.nis,
+              nama: d.nama,
+              kelas: d.kelas,
+              tanggal: d.tanggal,
+              tahun: tahunInt,
+              catatan: d.catatan,
+              username_guru: App.user.username
+            }));
+            
+          if (catatanInserts.length > 0) {
+            const { error: errCat } = await supaClient.from('catatan_ekskul').insert(catatanInserts);
+            if (errCat) throw errCat;
+          }
+          
+          toggleButtonLoading('button[onclick="simpanAbsenEkskul()"]', false);
+          showSuccess(`${dataToSave.length} data tersimpan`);
+          
+        } catch (err) {
+          toggleButtonLoading('button[onclick="simpanAbsenEkskul()"]', false);
+          showError('Gagal menyimpan: ' + err.message);
+        }
       });
     }
 
-    function loadDataEkskulForEdit() {
-      const ekskulId = document.getElementById('ekskulSelect').value;
+    async function loadDataEkskulForEdit() {
+      const ekskulSelect = document.getElementById('ekskulSelect');
+      const ekskulId = ekskulSelect.value;
+      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('editEkskulTanggal').value;
 
@@ -3101,28 +3250,90 @@
 
       showLoading(true);
 
-      // Ambil data peserta dan absen sekaligus
-      google.script.run
-        .withSuccessHandler(function (result) {
+      try {
+        const tahunInt = parseInt(tahunAjaran);
+        
+        // 1. Ambil data absen
+        const { data: absenData, error: errAbsen } = await supaClient
+          .from('absen_ekskul')
+          .select('nis, status')
+          .eq('nama_ekskul', ekskulNama)
+          .eq('tanggal', tanggal)
+          .eq('tahun', tahunInt);
+          
+        if (errAbsen) throw errAbsen;
+        
+        if (!absenData || absenData.length === 0) {
+          showError('Tidak ada data untuk tanggal ini yang dapat diedit');
+          document.getElementById('editEkskulContainer').style.display = 'none';
           showLoading(false);
-          if (result.success) {
-            if (Object.keys(result.existingData).length === 0) {
-              showError('Tidak ada data untuk tanggal ini yang dapat diedit oleh Anda');
-              document.getElementById('editEkskulContainer').style.display = 'none';
-              return;
-            }
-            App.pesertaData = result.siswa;
-            tampilkanTabelEditEkskul(App.pesertaData, result.existingData);
-            document.getElementById('editEkskulContainer').style.display = 'block';
-          } else {
-            showError(result.error || 'Gagal memuat data');
+          return;
+        }
+        
+        // 2. Ambil data catatan
+        const { data: catatanData, error: errCatatan } = await supaClient
+          .from('catatan_ekskul')
+          .select('nis, catatan')
+          .eq('nama_ekskul', ekskulNama)
+          .eq('tanggal', tanggal)
+          .eq('tahun', tahunInt);
+          
+        if (errCatatan) throw errCatatan;
+
+        const existingData = {};
+        absenData.forEach(a => {
+          if (!existingData[a.nis]) existingData[a.nis] = {};
+          existingData[a.nis].status = a.status;
+        });
+        if (catatanData) {
+          catatanData.forEach(c => {
+            if (!existingData[c.nis]) existingData[c.nis] = {};
+            existingData[c.nis].catatan = c.catatan;
+          });
+        }
+        
+        // 3. Ambil data peserta ekskul (sama seperti loadSiswaEkskul)
+        const { data: siswaEkskulData, error: errSiswaEkskul } = await supaClient
+          .from('siswa_ekskul')
+          .select('nis, nama, nama_ekskul')
+          .eq('nama_ekskul', ekskulNama);
+          
+        if (errSiswaEkskul) throw errSiswaEkskul;
+        
+        let peserta = [];
+        if (siswaEkskulData && siswaEkskulData.length > 0) {
+          const nisList = siswaEkskulData.map(s => s.nis);
+          
+          const { data: dataSiswa, error: errSiswa } = await supaClient
+            .from('data_siswa')
+            .select('nis, kelas')
+            .in('nis', nisList);
+            
+          if (errSiswa) throw errSiswa;
+          
+          const kelasMap = {};
+          if (dataSiswa) {
+            dataSiswa.forEach(s => kelasMap[s.nis] = s.kelas);
           }
-        })
-        .withFailureHandler(function (e) {
-          showLoading(false);
-            showError('Gagal: ' + e);
-        })
-        .getPesertaDanAbsenEkskul(ekskulId, tahunAjaran, tanggal, '', 'edit', App.user.profil.email);
+          
+          peserta = siswaEkskulData.map(s => ({
+            nis: s.nis,
+            nama: s.nama,
+            kelas: kelasMap[s.nis] || '-'
+          }));
+          
+          peserta.sort((a, b) => a.nama.localeCompare(b.nama));
+        }
+
+        showLoading(false);
+        App.pesertaData = peserta;
+        tampilkanTabelEditEkskul(App.pesertaData, existingData);
+        document.getElementById('editEkskulContainer').style.display = 'block';
+
+      } catch (err) {
+        showLoading(false);
+        showError('Gagal memuat data: ' + err.message);
+      }
     }
 
     function tampilkanTabelEditEkskul(siswaList, existingData) {
@@ -3197,10 +3408,10 @@
     function updateAbsenEkskul() {
       const ekskulSelect = document.getElementById('ekskulSelect');
       const ekskulId = ekskulSelect.value;
-      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
+      const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('editEkskulTanggal').value;
 
-      if (!ekskulId || !tanggal) {
+      if (!ekskulId || !tahunAjaran || !tanggal) {
         showError('Data tidak lengkap!');
         return;
       }
@@ -3226,7 +3437,6 @@
           dataToSave.push({
             nis, nama, kelas,
             status, catatan,
-            ekskul: ekskulNama,
             tanggal: tanggal
           });
         }
@@ -3237,23 +3447,68 @@
         return;
       }
 
-      confirmAction(`Update ${dataToSave.length} data absensi?`, function () {
+      confirmAction(`Update ${dataToSave.length} data absensi?`, async function () {
         toggleButtonLoading('button[onclick="updateAbsenEkskul()"]', true, '⏳ Memperbarui...');
-        google.script.run
-          .withSuccessHandler(function (r) {
-            toggleButtonLoading('button[onclick="updateAbsenEkskul()"]', false);
-            if (r.success) {
-              showSuccess(`${r.jumlah} data berhasil diupdate`);
-              document.getElementById('editEkskulContainer').style.display = 'none';
-            } else {
-              showError(r.error || 'Gagal mengupdate');
-            }
-          })
-          .withFailureHandler(function (e) {
-            toggleButtonLoading('button[onclick="updateAbsenEkskul()"]', false);
-              showError('Gagal: ' + e);
-          })
-          .updateAbsenEkskulBatch(dataToSave.map(d => Object.assign(d, { userEmail: App.user.profil.email })), ekskulId, tanggal);
+        
+        try {
+          const tahunInt = parseInt(tahunAjaran);
+          const nisList = dataToSave.map(d => d.nis);
+          
+          // 1. Delete absen lama untuk NIS terkait
+          await supaClient.from('absen_ekskul')
+            .delete()
+            .eq('ekskul_id', ekskulId)
+            .eq('tanggal', tanggal)
+            .in('nis', nisList);
+            
+          // 2. Insert absen baru
+          const absenInserts = dataToSave.map(d => ({
+            ekskul_id: ekskulId,
+            nis: d.nis,
+            nama: d.nama,
+            kelas: d.kelas,
+            tanggal: d.tanggal,
+            tahun: tahunInt,
+            status: d.status,
+            username_guru: App.user.username
+          }));
+          const { error: errAbsen } = await supaClient.from('absen_ekskul').insert(absenInserts);
+          if (errAbsen) throw errAbsen;
+          
+          // 3. Delete catatan lama
+          await supaClient.from('catatan_ekskul')
+            .delete()
+            .eq('ekskul_id', ekskulId)
+            .eq('tanggal', tanggal)
+            .in('nis', nisList);
+            
+          // 4. Insert catatan baru jika ada
+          const catatanInserts = dataToSave
+            .filter(d => d.catatan.trim() !== '')
+            .map(d => ({
+              ekskul_id: ekskulId,
+              nis: d.nis,
+              nama: d.nama,
+              kelas: d.kelas,
+              tanggal: d.tanggal,
+              tahun: tahunInt,
+              catatan: d.catatan,
+              username_guru: App.user.username
+            }));
+            
+          if (catatanInserts.length > 0) {
+            const { error: errCat } = await supaClient.from('catatan_ekskul').insert(catatanInserts);
+            if (errCat) throw errCat;
+          }
+          
+          toggleButtonLoading('button[onclick="updateAbsenEkskul()"]', false);
+          showSuccess(`${dataToSave.length} data berhasil diupdate`);
+          document.getElementById('editEkskulContainer').style.display = 'none';
+          
+        } catch (err) {
+          toggleButtonLoading('button[onclick="updateAbsenEkskul()"]', false);
+          showError('Gagal mengupdate: ' + err.message);
+        }
       });
     }
 
@@ -6578,7 +6833,11 @@
         data.nilai.forEach(n => {
           let rincianHTML = '';
           for (const [jenis, val] of Object.entries(n.nilai)) {
-            rincianHTML += `<span style="display:inline-block; margin-right:15px;"><strong style="color:#555;">${jenis}:</strong> ${val}</span>`;
+            let displayVal = val;
+            if (val === 0 || val === '0' || val === '' || val === null || val === undefined) {
+              displayVal = '<span style="color:#d32f2f; font-weight:bold;">Belum Lengkap</span>';
+            }
+            rincianHTML += `<span style="display:inline-block; margin-right:15px;"><strong style="color:#555;">${jenis}:</strong> ${displayVal}</span>`;
           }
 
           html += `
