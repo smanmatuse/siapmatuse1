@@ -2782,7 +2782,7 @@
                 <option value="2028">2028</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="filterKelasGroup" style="display:none;">
               <label>Filter Kelas</label>
               <select id="filterKelas" class="form-control" onchange="filterTabelEkskul()">
                 <option value="">-- Semua Kelas --</option>
@@ -2879,14 +2879,14 @@
       try {
         const { data, error } = await supaClient
           .from('master_ekskul')
-          .select('id, nama_ekskul')
+          .select('nama_ekskul')
           .order('nama_ekskul', { ascending: true });
           
         if (error) throw error;
         
         let options = '<option value="">-- Pilih Ekskul --</option>';
         data.forEach(e => {
-          options += `<option value="${e.id}">${e.nama_ekskul}</option>`;
+          options += `<option value="${e.nama_ekskul}">${e.nama_ekskul}</option>`;
         });
         select.innerHTML = options;
       } catch (err) {
@@ -2895,58 +2895,19 @@
       }
     }
 
-    async function loadPesertaEkskul() {
+    function loadPesertaEkskul() {
       const ekskulSelect = document.getElementById('ekskulSelect');
-      const ekskulId = ekskulSelect.value;
       const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
-      const tahunAjaran = document.getElementById('tahunAjaran').value;
-
-      if (!ekskulId || !tahunAjaran) return;
-
-      showLoading(true);
-
-      try {
-        const { data: siswaEkskulData, error: errSiswaEkskul } = await supaClient
-          .from('siswa_ekskul')
-          .select('nis, nama, nama_ekskul')
-          .eq('nama_ekskul', ekskulNama)
-          .eq('tahun', tahunAjaran)
-          .eq('status', 'Aktif');
-          
-        if (errSiswaEkskul) throw errSiswaEkskul;
-        
-        let peserta = [];
-        if (siswaEkskulData && siswaEkskulData.length > 0) {
-          const nisList = siswaEkskulData.map(s => s.nis);
-          
-          const { data: dataSiswa, error: errSiswa } = await supaClient
-            .from('data_siswa')
-            .select('nis, kelas')
-            .in('nis', nisList);
-            
-          if (errSiswa) throw errSiswa;
-          
-          const kelasMap = {};
-          if (dataSiswa) {
-            dataSiswa.forEach(s => kelasMap[s.nis] = s.kelas);
-          }
-          
-          peserta = siswaEkskulData.map(s => ({
-            nis: s.nis,
-            nama: s.nama,
-            kelas: kelasMap[s.nis] || '-'
-          }));
-          
-          peserta.sort((a, b) => a.nama.localeCompare(b.nama));
+      
+      const filterGroup = document.getElementById('filterKelasGroup');
+      if (filterGroup) {
+        if (['Pramuka', 'Tahfidz', 'Silat'].includes(ekskulNama)) {
+          filterGroup.style.display = 'block';
+        } else {
+          filterGroup.style.display = 'none';
+          document.getElementById('filterKelas').value = '';
+          filterTabelEkskul();
         }
-        
-        showLoading(false);
-        App.pesertaData = peserta;
-        window.pesertaTerfilter = App.pesertaData;
-        
-      } catch (err) {
-        showLoading(false);
-        showError('Gagal memuat peserta: ' + err.message);
       }
     }
 
