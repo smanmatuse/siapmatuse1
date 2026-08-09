@@ -1727,6 +1727,7 @@
       const roleLower = App.user.role ? App.user.role.toLowerCase() : '';
       if (roleLower === 'ortu' || roleLower === 'orangtua' || roleLower === 'orang tua') defaultMenu = 'orang_tua';
       if (roleLower === 'pimpinan') defaultMenu = 'pimpinan_beranda';
+      if (App.user.username === 'piket') defaultMenu = 'absensi';
 
       showMenu(defaultMenu);
     }
@@ -1779,7 +1780,11 @@
       let navItems = [];
       const roleLower = App.user.role ? App.user.role.toLowerCase() : '';
 
-      if (roleLower === 'guru') {
+      if (App.user.username === 'piket') {
+        navItems = [
+          { id: 'absensi', label: '📋', text: 'ABSENSI PIKET' }
+        ];
+      } else if (roleLower === 'guru') {
         navItems = [
           { id: 'beranda', label: '🏠', text: 'BERANDA' },
           { id: 'absensi', label: '📋', text: 'ABSENSI' },
@@ -2274,6 +2279,14 @@
     }
     //================================FUNGSI RENDER ABSENSI==============================
     function renderAbsensi() {
+      if (App.user.username === 'piket') {
+        document.getElementById('absensi').innerHTML = `<div class="form-section" id="absenRegulerContainer"></div>`;
+        if (typeof renderAbsensiPiket === 'function') {
+          renderAbsensiPiket();
+        }
+        return;
+      }
+
       if (!App.guruData) {
         document.getElementById('absensi').innerHTML = '<div class="form-section"><p>Data guru tidak tersedia</p></div>';
         return;
@@ -2456,6 +2469,7 @@
       const rows      = document.querySelectorAll('#absenTbody tr');
       const dataAbsen = [];
       const dataShalat = [];
+      const targetGuru = App.user.username === 'piket' ? document.getElementById('piketGuruSelect').value : App.user.username;
 
       rows.forEach(row => {
         const nis    = row.children[1].textContent;
@@ -2478,7 +2492,7 @@
             tanggal: tanggal,
             status: shalatSt,
             jumlah: shalatJml,
-            username_guru: App.user.username
+            username_guru: targetGuru
           });
         }
       });
@@ -2486,9 +2500,10 @@
       confirmAction(`Simpan ${dataAbsen.length} data absensi?`, async function () {
         toggleButtonLoading('button[onclick="simpanAbsensi()"]', true, '⏳ Menyimpan...');
 
+        const targetGuru = App.user.username === 'piket' ? document.getElementById('piketGuruSelect').value : App.user.username;
         const absensiData = dataAbsen.map(d => ({
           nis: d.nis, nama: d.nama, kelas, mapel, tanggal, jam,
-          status: d.status, username_guru: App.user.username
+          status: d.status, username_guru: targetGuru
         }));
 
         try {
@@ -7883,8 +7898,9 @@
   </div>
   <!-- =================================================== -->
 
-  <?!= include("App"); ?>
-  <script src="Laporan.js?v=7"></script>
+  <!-- SCRIPT LAINNYA -->
+  <script src="Laporan.js"></script>
+  <script src="Piket.js"></script>
   <script src="DashboardPimpinan.js?v=5"></script>
 
 </body>
