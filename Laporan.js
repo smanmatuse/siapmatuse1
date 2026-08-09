@@ -1820,7 +1820,7 @@ async function downloadLaporanCatatanEkskul() {
 
     } else {
       const bySiswa = {};
-      rows.forEach(r => { if (!bySiswa[r.nis]) bySiswa[r.nis] = { nama: r.nama, kelas: r.kelas, records: [] }; bySiswa[r.nis].records.push(r); });
+      rows.forEach(r => { if (!bySiswa[r.nis]) bySiswa[r.nis] = { nis: r.nis, nama: r.nama, kelas: r.kelas, records: [] }; bySiswa[r.nis].records.push(r); });
       const siswaList = Object.values(bySiswa).sort((a, b) => a.nama.localeCompare(b.nama));
 
       bodyContent = siswaList.map((siswa, idx) => {
@@ -1830,11 +1830,20 @@ async function downloadLaporanCatatanEkskul() {
           <td style="text-align:center;">${item.tanggal.split('-').reverse().join('/')}</td>
           <td>${item.catatan || '-'}</td>
         </tr>`).join('');
+        
+        const infoBlockSiswa = `
+      ${KOP_SURAT_LAPORAN}
+      <h2>LAPORAN CATATAN EKSKUL ${namaEkskul.toUpperCase()}</h2>
+      <div class="info"><table>
+        <tr><td class="lbl">Ekskul</td><td>: ${namaEkskul}</td></tr>
+        <tr><td class="lbl">Tahun</td><td>: ${tahun}</td></tr>
+        <tr><td class="lbl">Nama Siswa</td><td>: ${siswa.nama}</td></tr>
+        <tr><td class="lbl">NIS</td><td>: ${siswa.nis}</td></tr>
+        <tr><td class="lbl">Kelas</td><td>: ${siswa.kelas}</td></tr>
+      </table></div>`;
+
         return `<div ${!isLast ? 'class="page-break"' : ''}>
-          ${infoBlock}
-          <div style="background:#f3e5f5; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
-            <b>Nama Siswa :</b> ${siswa.nama} &nbsp;|&nbsp; <b>Kelas:</b> ${siswa.kelas}
-          </div>
+          ${infoBlockSiswa}
           <table class="data">
             <thead><tr><th style="width:30px;">No</th><th style="width:90px;">Tanggal</th><th>Catatan</th></tr></thead>
             <tbody>${tableRows || '<tr><td colspan="3" style="text-align:center;padding:20px;">Belum ada catatan</td></tr>'}</tbody>
@@ -1852,4 +1861,229 @@ async function downloadLaporanCatatanEkskul() {
     if (btn) { btn.disabled = false; btn.innerHTML = '📥 DOWNLOAD PDF CATATAN'; }
     showError('Gagal membuat laporan catatan ekskul: ' + err.message);
   }
+}
+
+// ============================================================
+// ============ LAPORAN PER SISWA (SUPABASE) ==================
+// ============================================================
+
+async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
+  let tglStart = '1970-01-01';
+  let tglEnd = '2100-12-31';
+
+  if (bulan && bulan !== 'semua' && tahun && tahun !== 'ALL') {
+    const b = parseInt(bulan);
+    const t = parseInt(tahun);
+    tglStart = `${t}-${b.toString().padStart(2, '0')}-01`;
+    const lastDay = new Date(t, b, 0).getDate();
+    tglEnd = `${t}-${b.toString().padStart(2, '0')}-${lastDay}`;
+  } else if (tahun && tahun !== 'ALL') {
+    tglStart = `${tahun}-01-01`;
+    tglEnd = `${tahun}-12-31`;
+  }
+
+  // 1. Data Wali Kelas
+  let namaWali = '(Kosong / Tidak Ditemukan)';
+  let nipWali = '-';
+  const { data: guruData } = await supaClient.from('data_guru').select('nama, nip').eq('wali_kelas', kelas).limit(1);
+  if (guruData && guruData.length > 0) {
+    namaWali = guruData[0].nama;
+    nipWali = guruData[0].nip || '-';
+  }
+
+  // 2. Data Master Dimensi (untuk catatan guru)
+  const { data: masterDimensi } = await supaClient.from('master_dimensi').select('*');
+  const mapDimensi = {};
+  if (masterDimensi) {
+    masterDimensi.forEach(d => { mapDimensi[d.id] = d; });
+  }
+
+  // 3. Data Master Siswa
+  let querySiswa = supaClient.from('data_siswa').select('nis, nama, kelas').eq('kelas', kelas);
+  if (nis && nis !== 'semua') {
+    querySiswa = querySiswa.eq('nis', nis);
+  }
+  const { data: dataSiswaAll, error: errSiswa } = await querySiswa.order('nama', { ascending: true });
+  if (errSiswa) throw errSiswa;
+  if (!dataSiswaAll || dataSiswaAll.length === 0) throw new Error('Data siswa tidak ditemukan di kelas ini.');
+
+  const nisList = dataSiswaAll.map(s => s.nis);
+  
+  // 4. Fetch all data in parallel
+  const queries = [
+    supaClient.from('absensi').select('nis, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    supaClient.from('shalat').select('nis, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
+    supaClient.from('catatan').select('nis, dimensi_id, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
+    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').in('nis', nisList),
+    supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    supaClient.from('catatan_ekskul').select('nis, nama_ekskul, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true})
+  ];
+
+  const results = await Promise.all(queries);
+  const dataAbsensi = results[0].data || [];
+  const dataShalat = results[1].data || [];
+  const dataPelanggaran = results[2].data || [];
+  const dataCatatan = results[3].data || [];
+  const dataNilai = results[4].data || [];
+  const dataAbsenEkskul = results[5].data || [];
+  const dataCatatanEkskul = results[6].data || [];
+
+  // Grouping by NIS
+  const processedData = dataSiswaAll.map(siswa => {
+    const sNis = siswa.nis;
+
+    const absen = { H: 0, I: 0, S: 0, A: 0, T: 0, C: 0 };
+    dataAbsensi.filter(a => a.nis === sNis).forEach(a => { if (absen[a.status] !== undefined) absen[a.status]++; });
+
+    const shalat = { Y: 0, N: 0, B: 0 };
+    dataShalat.filter(s => s.nis === sNis).forEach(s => { if (shalat[s.status] !== undefined) shalat[s.status]++; });
+
+    const pelanggaran = dataPelanggaran.filter(p => p.nis === sNis);
+
+    const catatan = dataCatatan.filter(c => c.nis === sNis).map(c => ({
+      ...c, dimensi_nama: mapDimensi[c.dimensi_id]?.elemen || 'Lainnya'
+    }));
+
+    const nilaiSiswa = dataNilai.filter(n => n.nis === sNis);
+    const mapelNilai = {};
+    nilaiSiswa.forEach(n => {
+      if (!mapelNilai[n.matapelajaran]) mapelNilai[n.matapelajaran] = {};
+      if (!mapelNilai[n.matapelajaran][n.jenistugas]) mapelNilai[n.matapelajaran][n.jenistugas] = [];
+      mapelNilai[n.matapelajaran][n.jenistugas].push(Number(n.nilai));
+    });
+
+    const absenEkskulRaw = dataAbsenEkskul.filter(a => a.nis === sNis);
+    const ekskulData = {};
+    absenEkskulRaw.forEach(a => {
+      if (!ekskulData[a.nama_ekskul]) ekskulData[a.nama_ekskul] = { absen: { H:0, I:0, S:0, A:0, T:0, C:0 }, catatan: [] };
+      if (ekskulData[a.nama_ekskul].absen[a.status] !== undefined) ekskulData[a.nama_ekskul].absen[a.status]++;
+    });
+
+    const catatanEkskulRaw = dataCatatanEkskul.filter(c => c.nis === sNis);
+    catatanEkskulRaw.forEach(c => {
+      if (!ekskulData[c.nama_ekskul]) ekskulData[c.nama_ekskul] = { absen: { H:0, I:0, S:0, A:0, T:0, C:0 }, catatan: [] };
+      ekskulData[c.nama_ekskul].catatan.push(c);
+    });
+
+    return { siswa, absen, shalat, pelanggaran, catatan, nilai: mapelNilai, ekskul: ekskulData };
+  });
+
+  return {
+    namaWali, nipWali, tahun,
+    bulanNama: (bulan && bulan !== 'semua') ? ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][parseInt(bulan)-1] : 'Semua Bulan',
+    data: processedData
+  };
+}
+
+function generateHtmlLaporanSiswa(result) {
+  const { namaWali, nipWali, bulanNama, tahun, data } = result;
+
+  const css = `
+    @page { size: A4; margin: 1.5cm; }
+    @media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } .page-break { page-break-after: always; } }
+    body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; }
+    h2, h3 { text-align:center; margin:5px 0; }
+    h2 { font-size:16px; margin-top:10px; }
+    .header-info { margin: 15px 0; }
+    .header-info table td { padding: 3px 5px; }
+    .header-info td.lbl { font-weight: bold; width: 120px; }
+    .section-title { font-weight: bold; font-size: 12px; margin-top: 15px; margin-bottom: 5px; background: #e0e0e0; padding: 5px; border-left: 4px solid #4CAF50; }
+    table.data { width:100%; border-collapse:collapse; margin-bottom:15px; }
+    table.data th, table.data td { border:1px solid #000; padding:5px; vertical-align:top; }
+    table.data th { background:#f5f5f5 !important; font-weight:bold; text-align:center; }
+    .ttd { margin-top:30px; text-align:right; width: 300px; float: right; }
+    .ttd .space { height: 60px; }
+    .page-break { page-break-after: always; }
+    .clear { clear: both; }
+  `;
+
+  let htmlContent = '';
+
+  data.forEach((item, index) => {
+    const s = item.siswa;
+    const isLast = index === data.length - 1;
+
+    const absenHtml = `
+      <table class="data" style="width: 100%;">
+        <tr><th colspan="4">Kehadiran (Absensi Mata Pelajaran)</th><th colspan="3">Pelaksanaan Shalat Berjamaah</th></tr>
+        <tr style="text-align:center;">
+          <td>Hadir: <b>${item.absen.H}</b></td><td>Izin: <b>${item.absen.I}</b></td>
+          <td>Sakit: <b>${item.absen.S}</b></td><td>Alpa: <b>${item.absen.A}</b></td>
+          <td>Dilaksanakan (Y): <b>${item.shalat.Y}</b></td><td>Tidak (N): <b>${item.shalat.N}</b></td><td>Berhalangan (B): <b>${item.shalat.B}</b></td>
+        </tr>
+      </table>`;
+
+    let pelanggaranRows = '';
+    if (item.pelanggaran.length > 0) {
+      item.pelanggaran.forEach((p, i) => { pelanggaranRows += `<tr><td style="text-align:center;">${i+1}</td><td style="text-align:center;">${p.tanggal.split('-').reverse().join('/')}</td><td>${p.jenis}</td><td>${p.perilaku}</td><td style="text-align:center;">${p.poin}</td><td>${p.tindak_lanjut || '-'}</td></tr>`; });
+    } else { pelanggaranRows = '<tr><td colspan="6" style="text-align:center;font-style:italic;">Tidak ada catatan pelanggaran</td></tr>'; }
+    const pelanggaranHtml = `<div class="section-title">A. Catatan Pelanggaran & Kedisiplinan</div><table class="data"><thead><tr><th style="width:30px;">No</th><th style="width:75px;">Tanggal</th><th>Jenis</th><th>Perilaku</th><th style="width:40px;">Poin</th><th>Tindak Lanjut</th></tr></thead><tbody>${pelanggaranRows}</tbody></table>`;
+
+    let catatanRows = '';
+    if (item.catatan.length > 0) {
+      item.catatan.forEach((c, i) => { catatanRows += `<tr><td style="text-align:center;">${i+1}</td><td style="text-align:center;">${c.tanggal.split('-').reverse().join('/')}</td><td>${c.dimensi_nama}</td><td>${c.catatan}</td><td style="text-align:center;">+${c.poin}</td></tr>`; });
+    } else { catatanRows = '<tr><td colspan="5" style="text-align:center;font-style:italic;">Tidak ada catatan prestasi/positif</td></tr>'; }
+    const catatanHtml = `<div class="section-title">B. Catatan Prestasi / Karakter Positif</div><table class="data"><thead><tr><th style="width:30px;">No</th><th style="width:75px;">Tanggal</th><th>Karakter (Dimensi)</th><th>Catatan</th><th style="width:40px;">Poin</th></tr></thead><tbody>${catatanRows}</tbody></table>`;
+
+    let ekskulHtml = '';
+    const ekskulNames = Object.keys(item.ekskul);
+    if (ekskulNames.length > 0) {
+      let ekskulRows = '';
+      ekskulNames.forEach((namaEkskul, i) => {
+        const eData = item.ekskul[namaEkskul];
+        const absenEks = eData.absen;
+        const cttnList = eData.catatan.length > 0 ? '<ul style="margin:0; padding-left:15px;">' + eData.catatan.map(c => `<li>${c.tanggal.split('-').reverse().join('/')}: ${c.catatan}</li>`).join('') + '</ul>' : '-';
+        ekskulRows += `<tr><td style="text-align:center;">${i+1}</td><td><b>${namaEkskul}</b></td><td style="font-size:10px;">H: ${absenEks.H} | I: ${absenEks.I} | S: ${absenEks.S} | A: ${absenEks.A} | T: ${absenEks.T} | C: ${absenEks.C}</td><td>${cttnList}</td></tr>`;
+      });
+      ekskulHtml = `<div class="section-title">C. Rekapitulasi Ekstrakurikuler</div><table class="data"><thead><tr><th style="width:30px;">No</th><th>Nama Ekskul</th><th style="width:140px;">Kehadiran Ekskul</th><th>Catatan Pembina</th></tr></thead><tbody>${ekskulRows}</tbody></table>`;
+    } else { ekskulHtml = `<div class="section-title">C. Rekapitulasi Ekstrakurikuler</div><table class="data"><tr><td style="text-align:center;font-style:italic;">Tidak ada data kegiatan ekstrakurikuler</td></tr></table>`; }
+
+    let nilaiHtml = '';
+    const mapelList = Object.keys(item.nilai).sort();
+    if (mapelList.length > 0) {
+      let nilaiRows = '';
+      mapelList.forEach((mapel, i) => {
+        const nData = item.nilai[mapel];
+        const avg = (arr) => arr && arr.length > 0 ? (arr.reduce((a,b)=>a+b,0) / arr.length).toFixed(1) : '-';
+        nilaiRows += `<tr><td style="text-align:center;">${i+1}</td><td>${mapel}</td><td style="text-align:center;">${avg(nData['TG'])}</td><td style="text-align:center;">${avg(nData['UH'])}</td><td style="text-align:center;">${avg(nData['MID'])}</td><td style="text-align:center;">${avg(nData['SM'])}</td></tr>`;
+      });
+      nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><thead><tr><th rowspan="2" style="width:30px;">No</th><th rowspan="2">Mata Pelajaran</th><th colspan="4">Rata-rata Nilai Berdasarkan Jenis Tugas</th></tr><tr><th style="width:50px;">TG</th><th style="width:50px;">UH</th><th style="width:50px;">MID</th><th style="width:50px;">SM</th></tr></thead><tbody>${nilaiRows}</tbody></table>`;
+    } else { nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><tr><td style="text-align:center;font-style:italic;">Belum ada nilai yang diinput</td></tr></table>`; }
+
+    const ttdDate = new Date();
+    const ttdDateStr = `${ttdDate.getDate()} ${['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][ttdDate.getMonth()]} ${ttdDate.getFullYear()}`;
+    
+    htmlContent += `
+      <div ${!isLast ? 'class="page-break"' : ''}>
+        ${KOP_SURAT_LAPORAN}
+        <h2>LAPORAN PERKEMBANGAN PESERTA DIDIK</h2>
+        <div class="header-info">
+          <table>
+            <tr><td class="lbl">Nama Siswa</td><td>: ${s.nama}</td></tr>
+            <tr><td class="lbl">NIS / Kelas</td><td>: ${s.nis} / ${s.kelas}</td></tr>
+            <tr><td class="lbl">Bulan / Tahun</td><td>: ${bulanNama} ${tahun}</td></tr>
+            <tr><td class="lbl">Wali Kelas</td><td>: ${namaWali}</td></tr>
+          </table>
+        </div>
+        
+        ${absenHtml}
+        ${pelanggaranHtml}
+        ${catatanHtml}
+        ${ekskulHtml}
+        ${nilaiHtml}
+
+        <div class="ttd">
+          Pasaman, ${ttdDateStr}<br>
+          Wali Kelas ${s.kelas}<br>
+          <div class="space"></div>
+          <b><u>${namaWali}</u></b><br>
+          NIP. ${nipWali}
+        </div>
+        <div class="clear"></div>
+      </div>
+    `;
+  });
+
+  return `<html><head><style>${css}</style></head><body>${htmlContent || '<h3 style="text-align:center; margin-top:50px;">Tidak ada data yang ditemukan.</h3>'}</body></html>`;
 }
