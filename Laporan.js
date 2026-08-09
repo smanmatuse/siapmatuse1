@@ -1490,3 +1490,360 @@ async function downloadLaporanWali() {
   }
 }
 
+// ============================================================
+// ============ LAPORAN EKSKUL (SUPABASE) =====================
+// ============================================================
+
+async function loadEkskulDropdownLaporan() {
+  const select = document.getElementById('laporanEkskulSelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">⏳ Memuat...</option>';
+
+  try {
+    const { data, error } = await supaClient
+      .from('master_ekskul')
+      .select('id, nama')
+      .order('nama', { ascending: true });
+
+    if (error) throw error;
+
+    let options = '<option value="">-- Pilih Ekskul --</option>';
+    (data || []).forEach(e => {
+      options += `<option value="${e.id}">${e.nama}</option>`;
+    });
+    select.innerHTML = options;
+  } catch (err) {
+    select.innerHTML = '<option value="">Gagal memuat ekskul</option>';
+    showError('Gagal memuat daftar ekskul: ' + err.message);
+  }
+}
+
+async function loadLaporanKehadiran(ekskulId, tahunAjaran, filterKelas = '') {
+  const container = document.getElementById('kehadiranPreview');
+  if (!container) return;
+  container.innerHTML = '<p style="padding:15px; text-align:center; color:#666;">⏳ Memuat data kehadiran...</p>';
+
+  try {
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama || '-';
+
+    let query = supaClient
+      .from('absen_ekskul')
+      .select('nis, nama, kelas, tanggal, status')
+      .eq('ekskul_id', ekskulId)
+      .eq('tahun_ajaran', tahunAjaran)
+      .order('tanggal', { ascending: true });
+    if (filterKelas) query = query.eq('kelas', filterKelas);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const rows = data || [];
+    if (rows.length === 0) {
+      container.innerHTML = '<p style="padding:20px; text-align:center; color:#999;">Belum ada data kehadiran untuk filter yang dipilih.</p>';
+      return;
+    }
+
+    const semuaTanggal = [...new Set(rows.map(r => r.tanggal))].sort();
+    const siswaMap = {};
+    rows.forEach(r => { if (!siswaMap[r.nis]) siswaMap[r.nis] = { nama: r.nama, kelas: r.kelas }; });
+    const lookup = {};
+    rows.forEach(r => { if (!lookup[r.nis]) lookup[r.nis] = {}; lookup[r.nis][r.tanggal] = r.status; });
+
+    const sortedSiswa = Object.entries(siswaMap).sort((a, b) => (a[1].nama || '').localeCompare(b[1].nama || ''));
+
+    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun Ajaran: <b>${tahunAjaran}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
+    <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:11px;">
+      <thead><tr style="background:#1565c0; color:white;">
+        <th style="padding:6px; border:1px solid #90caf9;">No</th>
+        <th style="padding:6px; border:1px solid #90caf9; text-align:left;">Nama Siswa</th>
+        <th style="padding:6px; border:1px solid #90caf9;">Kelas</th>
+        ${semuaTanggal.map(t => `<th style="padding:4px 6px; border:1px solid #90caf9; white-space:nowrap;">${t.split('-').reverse().join('/')}</th>`).join('')}
+      </tr></thead><tbody>`;
+
+    sortedSiswa.forEach(([nis, info], idx) => {
+      html += `<tr style="background:${idx % 2 === 0 ? '#f3f8ff' : 'white'};">
+        <td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${idx + 1}</td>
+        <td style="padding:4px 6px; border:1px solid #ddd;">${info.nama}</td>
+        <td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${info.kelas}</td>
+        ${semuaTanggal.map(t => {
+          const st = lookup[nis]?.[t] || '-';
+          const color = st === 'H' ? '#2e7d32' : st === 'I' ? '#f57f17' : st === 'S' ? '#1565c0' : st === 'A' ? '#b71c1c' : '#555';
+          return `<td style="padding:4px 6px; border:1px solid #ddd; text-align:center; font-weight:bold; color:${color};">${st}</td>`;
+        }).join('')}
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p style="padding:15px; text-align:center; color:#c62828;">❌ Gagal memuat: ${err.message}</p>`;
+  }
+}
+
+async function loadLaporanCatatan(ekskulId, tahunAjaran, mode, filterKelas = '') {
+  const container = document.getElementById('catatanPreview');
+  if (!container) return;
+  container.innerHTML = '<p style="padding:15px; text-align:center; color:#666;">⏳ Memuat data catatan...</p>';
+
+  try {
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama || '-';
+
+    let query = supaClient
+      .from('catatan_ekskul')
+      .select('nis, nama, kelas, tanggal, catatan')
+      .eq('ekskul_id', ekskulId)
+      .eq('tahun_ajaran', tahunAjaran)
+      .order('tanggal', { ascending: true });
+    if (filterKelas) query = query.eq('kelas', filterKelas);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const rows = data || [];
+    if (rows.length === 0) {
+      container.innerHTML = '<p style="padding:20px; text-align:center; color:#999;">Belum ada catatan untuk filter yang dipilih.</p>';
+      return;
+    }
+
+    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun Ajaran: <b>${tahunAjaran}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
+    <table style="width:100%; border-collapse:collapse; font-size:11px;">`;
+
+    if (mode === 'tanggal') {
+      const byTanggal = {};
+      rows.forEach(r => { if (!byTanggal[r.tanggal]) byTanggal[r.tanggal] = []; byTanggal[r.tanggal].push(r); });
+      html += `<thead><tr style="background:#6a1b9a; color:white;">
+        <th style="padding:6px; border:1px solid #ce93d8;">Tanggal</th>
+        <th style="padding:6px; border:1px solid #ce93d8; text-align:left;">Nama Siswa</th>
+        <th style="padding:6px; border:1px solid #ce93d8;">Kelas</th>
+        <th style="padding:6px; border:1px solid #ce93d8; text-align:left;">Catatan</th>
+      </tr></thead><tbody>`;
+      Object.entries(byTanggal).forEach(([tgl, items]) => {
+        items.forEach((item, i) => {
+          html += `<tr>
+            ${i === 0 ? `<td rowspan="${items.length}" style="padding:4px 6px; border:1px solid #ddd; text-align:center; vertical-align:middle; font-weight:bold;">${tgl.split('-').reverse().join('/')}</td>` : ''}
+            <td style="padding:4px 6px; border:1px solid #ddd;">${item.nama}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${item.kelas}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd;">${item.catatan || '-'}</td>
+          </tr>`;
+        });
+      });
+    } else {
+      const bySiswa = {};
+      rows.forEach(r => { if (!bySiswa[r.nis]) bySiswa[r.nis] = { nama: r.nama, kelas: r.kelas, records: [] }; bySiswa[r.nis].records.push(r); });
+      html += `<thead><tr style="background:#6a1b9a; color:white;">
+        <th style="padding:6px; border:1px solid #ce93d8; text-align:left;">Nama Siswa</th>
+        <th style="padding:6px; border:1px solid #ce93d8;">Kelas</th>
+        <th style="padding:6px; border:1px solid #ce93d8;">Tanggal</th>
+        <th style="padding:6px; border:1px solid #ce93d8; text-align:left;">Catatan</th>
+      </tr></thead><tbody>`;
+      Object.values(bySiswa).sort((a, b) => a.nama.localeCompare(b.nama)).forEach(siswa => {
+        siswa.records.forEach((item, i) => {
+          html += `<tr>
+            ${i === 0 ? `<td rowspan="${siswa.records.length}" style="padding:4px 6px; border:1px solid #ddd; vertical-align:middle; font-weight:bold;">${siswa.nama}</td>
+            <td rowspan="${siswa.records.length}" style="padding:4px 6px; border:1px solid #ddd; text-align:center; vertical-align:middle;">${siswa.kelas}</td>` : ''}
+            <td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${item.tanggal.split('-').reverse().join('/')}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd;">${item.catatan || '-'}</td>
+          </tr>`;
+        });
+      });
+    }
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<p style="padding:15px; text-align:center; color:#c62828;">❌ Gagal memuat: ${err.message}</p>`;
+  }
+}
+
+async function downloadLaporanKehadiranEkskul() {
+  const ekskulId = document.getElementById('laporanEkskulSelect').value;
+  const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
+  const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
+
+  if (!ekskulId || !tahunAjaran) { showError('Pilih ekskul dan tahun ajaran!'); return; }
+
+  const btn = document.getElementById('btnDownloadKehadiran');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ MENYIAPKAN...'; }
+
+  try {
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama, pembina, nip_pembina').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama || '-';
+    const namaPembina = ekskulInfo?.pembina || '-';
+    const nipPembina = ekskulInfo?.nip_pembina || '-';
+
+    let query = supaClient.from('absen_ekskul').select('nis, nama, kelas, tanggal, status')
+      .eq('ekskul_id', ekskulId).eq('tahun_ajaran', tahunAjaran).order('tanggal', { ascending: true });
+    if (filterKelas) query = query.eq('kelas', filterKelas);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const rows = data || [];
+    const semuaTanggal = [...new Set(rows.map(r => r.tanggal))].sort();
+    const siswaMap = {};
+    rows.forEach(r => { if (!siswaMap[r.nis]) siswaMap[r.nis] = { nama: r.nama, kelas: r.kelas }; });
+    const lookup = {};
+    rows.forEach(r => { if (!lookup[r.nis]) lookup[r.nis] = {}; lookup[r.nis][r.tanggal] = r.status; });
+    const sortedSiswa = Object.entries(siswaMap).sort((a, b) => (a[1].nama || '').localeCompare(b[1].nama || ''));
+
+    const BULAN_NAMA = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const today = new Date();
+    const todayStr = `${today.getDate()} ${BULAN_NAMA[today.getMonth() + 1]} ${today.getFullYear()}`;
+
+    const css = `
+      @page { size: A4 landscape; margin: 1.5cm; }
+      @media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 0; padding: 0; }
+      h2 { text-align:center; margin:8px 0; font-size:14px; }
+      .info table td { padding:2px 5px; }
+      .info td.lbl { font-weight:bold; width:110px; }
+      table.data { width:100%; border-collapse:collapse; margin:12px 0; }
+      table.data th { background:#1565c0 !important; color:white !important; padding:5px; border:1px solid #90caf9; text-align:center; font-size:9px; }
+      table.data td { border:1px solid #ccc; padding:4px 5px; }
+      .ttd { margin-top:40px; text-align:right; }
+      .ttd .space { margin-top:55px; }
+    `;
+
+    const tableRows = sortedSiswa.map(([nis, info], idx) => {
+      const statusCells = semuaTanggal.map(t => `<td style="text-align:center;">${lookup[nis]?.[t] || '-'}</td>`).join('');
+      return `<tr style="background:${idx % 2 === 0 ? '#f5f9ff' : 'white'}"><td style="text-align:center;">${idx + 1}</td><td>${info.nama}</td><td style="text-align:center;">${info.kelas}</td>${statusCells}</tr>`;
+    }).join('');
+
+    const html = `<html><head><style>${css}</style></head><body>
+      ${KOP_SURAT_LAPORAN}
+      <h2>LAPORAN KEHADIRAN EKSKUL ${namaEkskul.toUpperCase()}</h2>
+      <div class="info"><table>
+        <tr><td class="lbl">Ekskul</td><td>: ${namaEkskul}</td></tr>
+        <tr><td class="lbl">Tahun Ajaran</td><td>: ${tahunAjaran}</td></tr>
+        ${filterKelas ? `<tr><td class="lbl">Kelas</td><td>: ${filterKelas}</td></tr>` : ''}
+        <tr><td class="lbl">Pembina</td><td>: ${namaPembina}</td></tr>
+        <tr><td class="lbl">NIP</td><td>: ${nipPembina}</td></tr>
+      </table></div>
+      <table class="data">
+        <thead><tr>
+          <th style="width:30px;">No</th><th>Nama Siswa</th><th style="width:50px;">Kelas</th>
+          ${semuaTanggal.map(t => `<th>${t.split('-').reverse().join('/')}</th>`).join('')}
+        </tr></thead>
+        <tbody>${tableRows || '<tr><td colspan="100" style="text-align:center;padding:20px;">Belum ada data</td></tr>'}</tbody>
+      </table>
+      <div class="ttd"><p>Pasaman, ${todayStr}</p><p>Pembina Ekskul</p><div class="space"></div><p>${namaPembina}</p><p>NIP. ${nipPembina}</p></div>
+    </body></html>`;
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '📥 DOWNLOAD PDF KEHADIRAN'; }
+    openReportAndPrint(html);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '📥 DOWNLOAD PDF KEHADIRAN'; }
+    showError('Gagal membuat laporan kehadiran ekskul: ' + err.message);
+  }
+}
+
+async function downloadLaporanCatatanEkskul() {
+  const ekskulId = document.getElementById('laporanEkskulSelect').value;
+  const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
+  const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
+  const modeTanggal = document.getElementById('modeTanggalBtn')?.classList.contains('active') !== false;
+
+  if (!ekskulId || !tahunAjaran) { showError('Pilih ekskul dan tahun ajaran!'); return; }
+
+  const btn = document.getElementById('btnDownloadCatatan');
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ MENYIAPKAN...'; }
+
+  try {
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama, pembina, nip_pembina').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama || '-';
+    const namaPembina = ekskulInfo?.pembina || '-';
+    const nipPembina = ekskulInfo?.nip_pembina || '-';
+
+    let query = supaClient.from('catatan_ekskul').select('nis, nama, kelas, tanggal, catatan')
+      .eq('ekskul_id', ekskulId).eq('tahun_ajaran', tahunAjaran).order('tanggal', { ascending: true });
+    if (filterKelas) query = query.eq('kelas', filterKelas);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = data || [];
+
+    const BULAN_NAMA = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const today = new Date();
+    const todayStr = `${today.getDate()} ${BULAN_NAMA[today.getMonth() + 1]} ${today.getFullYear()}`;
+
+    const css = `
+      @page { size: A4; margin: 1.5cm; }
+      @media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } .page-break { page-break-after: always; } }
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 0; padding: 0; }
+      h2 { text-align:center; margin:8px 0; font-size:14px; }
+      .info table td { padding:2px 5px; } .info td.lbl { font-weight:bold; width:110px; }
+      table.data { width:100%; border-collapse:collapse; margin:12px 0; }
+      table.data th { background:#6a1b9a !important; color:white !important; padding:5px; border:1px solid #ce93d8; text-align:center; }
+      table.data td { border:1px solid #ccc; padding:5px; vertical-align:top; }
+      .ttd { margin-top:40px; text-align:right; } .ttd .space { margin-top:55px; }
+      .page-break { page-break-after: always; }
+    `;
+
+    const infoBlock = `
+      ${KOP_SURAT_LAPORAN}
+      <h2>LAPORAN CATATAN EKSKUL ${namaEkskul.toUpperCase()}</h2>
+      <div class="info"><table>
+        <tr><td class="lbl">Ekskul</td><td>: ${namaEkskul}</td></tr>
+        <tr><td class="lbl">Tahun Ajaran</td><td>: ${tahunAjaran}</td></tr>
+        ${filterKelas ? `<tr><td class="lbl">Kelas</td><td>: ${filterKelas}</td></tr>` : ''}
+        <tr><td class="lbl">Pembina</td><td>: ${namaPembina}</td></tr>
+      </table></div>`;
+
+    const ttdBlock = `<div class="ttd"><p>Pasaman, ${todayStr}</p><p>Pembina Ekskul</p><div class="space"></div><p>${namaPembina}</p><p>NIP. ${nipPembina}</p></div>`;
+
+    let bodyContent = '';
+
+    if (modeTanggal) {
+      const byTanggal = {};
+      rows.forEach(r => { if (!byTanggal[r.tanggal]) byTanggal[r.tanggal] = []; byTanggal[r.tanggal].push(r); });
+      const tableRows = Object.entries(byTanggal).map(([tgl, items]) =>
+        items.map((item, i) => `<tr>
+          ${i === 0 ? `<td rowspan="${items.length}" style="text-align:center;vertical-align:middle;font-weight:bold;">${tgl.split('-').reverse().join('/')}</td>` : ''}
+          <td>${item.nama}</td><td style="text-align:center;">${item.kelas}</td><td>${item.catatan || '-'}</td>
+        </tr>`).join('')
+      ).join('');
+
+      bodyContent = `${infoBlock}
+        <table class="data">
+          <thead><tr><th style="width:90px;">Tanggal</th><th>Nama Siswa</th><th style="width:50px;">Kelas</th><th>Catatan</th></tr></thead>
+          <tbody>${tableRows || '<tr><td colspan="4" style="text-align:center;padding:20px;">Belum ada data</td></tr>'}</tbody>
+        </table>${ttdBlock}`;
+
+    } else {
+      const bySiswa = {};
+      rows.forEach(r => { if (!bySiswa[r.nis]) bySiswa[r.nis] = { nama: r.nama, kelas: r.kelas, records: [] }; bySiswa[r.nis].records.push(r); });
+      const siswaList = Object.values(bySiswa).sort((a, b) => a.nama.localeCompare(b.nama));
+
+      bodyContent = siswaList.map((siswa, idx) => {
+        const isLast = idx === siswaList.length - 1;
+        const tableRows = siswa.records.map((item, i) => `<tr>
+          <td style="text-align:center;">${i + 1}</td>
+          <td style="text-align:center;">${item.tanggal.split('-').reverse().join('/')}</td>
+          <td>${item.catatan || '-'}</td>
+        </tr>`).join('');
+        return `<div ${!isLast ? 'class="page-break"' : ''}>
+          ${infoBlock}
+          <div style="background:#f3e5f5; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
+            <b>Nama Siswa :</b> ${siswa.nama} &nbsp;|&nbsp; <b>Kelas:</b> ${siswa.kelas}
+          </div>
+          <table class="data">
+            <thead><tr><th style="width:30px;">No</th><th style="width:90px;">Tanggal</th><th>Catatan</th></tr></thead>
+            <tbody>${tableRows || '<tr><td colspan="3" style="text-align:center;padding:20px;">Belum ada catatan</td></tr>'}</tbody>
+          </table>
+          ${ttdBlock}
+        </div>`;
+      }).join('');
+    }
+
+    const html = `<html><head><style>${css}</style></head><body>${bodyContent || '<p style="text-align:center;padding:40px;">Belum ada catatan.</p>'}</body></html>`;
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '📥 DOWNLOAD PDF CATATAN'; }
+    openReportAndPrint(html);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '📥 DOWNLOAD PDF CATATAN'; }
+    showError('Gagal membuat laporan catatan ekskul: ' + err.message);
+  }
+}
