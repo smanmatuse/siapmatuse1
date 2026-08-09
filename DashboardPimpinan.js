@@ -313,8 +313,8 @@ async function renderPimpinanKehadiran(forceRefresh = false) {
         if (/[A-Z]{3}/.test(k)) return false; 
         return true;
       });
-    } else if (App && App.config && App.config.kelasReguler) {
-      daftarKelas = App.config.kelasReguler;
+    } else {
+      daftarKelas = ['E1', 'E2', 'F1.1', 'F1.2', 'F2.1']; // Fallback yang akurat
     }
 
     // ==========================================
