@@ -1502,14 +1502,14 @@ async function loadEkskulDropdownLaporan() {
   try {
     const { data, error } = await supaClient
       .from('master_ekskul')
-      .select('id, nama')
-      .order('nama', { ascending: true });
+      .select('id, nama_ekskul')
+      .order('nama_ekskul', { ascending: true });
 
     if (error) throw error;
 
     let options = '<option value="">-- Pilih Ekskul --</option>';
     (data || []).forEach(e => {
-      options += `<option value="${e.id}">${e.nama}</option>`;
+      options += `<option value="${e.id}">${e.nama_ekskul}</option>`;
     });
     select.innerHTML = options;
   } catch (err) {
@@ -1518,20 +1518,20 @@ async function loadEkskulDropdownLaporan() {
   }
 }
 
-async function loadLaporanKehadiran(ekskulId, tahunAjaran, filterKelas = '') {
+async function loadLaporanKehadiran(ekskulId, tahun, filterKelas = '') {
   const container = document.getElementById('kehadiranPreview');
   if (!container) return;
   container.innerHTML = '<p style="padding:15px; text-align:center; color:#666;">⏳ Memuat data kehadiran...</p>';
 
   try {
-    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama').eq('id', ekskulId).single();
-    const namaEkskul = ekskulInfo?.nama || '-';
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama_ekskul').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama_ekskul || '-';
 
     let query = supaClient
       .from('absen_ekskul')
       .select('nis, nama, kelas, tanggal, status')
       .eq('ekskul_id', ekskulId)
-      .eq('tahun_ajaran', tahunAjaran)
+      .eq('tahun', parseInt(tahun))
       .order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
@@ -1552,7 +1552,7 @@ async function loadLaporanKehadiran(ekskulId, tahunAjaran, filterKelas = '') {
 
     const sortedSiswa = Object.entries(siswaMap).sort((a, b) => (a[1].nama || '').localeCompare(b[1].nama || ''));
 
-    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun Ajaran: <b>${tahunAjaran}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
+    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun: <b>${tahun}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
     <div style="overflow-x:auto;">
     <table style="width:100%; border-collapse:collapse; font-size:11px;">
       <thead><tr style="background:#1565c0; color:white;">
@@ -1582,20 +1582,20 @@ async function loadLaporanKehadiran(ekskulId, tahunAjaran, filterKelas = '') {
   }
 }
 
-async function loadLaporanCatatan(ekskulId, tahunAjaran, mode, filterKelas = '') {
+async function loadLaporanCatatan(ekskulId, tahun, mode, filterKelas = '') {
   const container = document.getElementById('catatanPreview');
   if (!container) return;
   container.innerHTML = '<p style="padding:15px; text-align:center; color:#666;">⏳ Memuat data catatan...</p>';
 
   try {
-    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama').eq('id', ekskulId).single();
-    const namaEkskul = ekskulInfo?.nama || '-';
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama_ekskul').eq('id', ekskulId).single();
+    const namaEkskul = ekskulInfo?.nama_ekskul || '-';
 
     let query = supaClient
       .from('catatan_ekskul')
       .select('nis, nama, kelas, tanggal, catatan')
       .eq('ekskul_id', ekskulId)
-      .eq('tahun_ajaran', tahunAjaran)
+      .eq('tahun', parseInt(tahun))
       .order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
@@ -1608,7 +1608,7 @@ async function loadLaporanCatatan(ekskulId, tahunAjaran, mode, filterKelas = '')
       return;
     }
 
-    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun Ajaran: <b>${tahunAjaran}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
+    let html = `<p style="font-size:12px; color:#555; margin-bottom:8px;">📋 <b>${namaEkskul}</b> | Tahun: <b>${tahun}</b>${filterKelas ? ' | Kelas: <b>' + filterKelas + '</b>' : ''}</p>
     <table style="width:100%; border-collapse:collapse; font-size:11px;">`;
 
     if (mode === 'tanggal') {
@@ -1660,22 +1660,24 @@ async function loadLaporanCatatan(ekskulId, tahunAjaran, mode, filterKelas = '')
 
 async function downloadLaporanKehadiranEkskul() {
   const ekskulId = document.getElementById('laporanEkskulSelect').value;
-  const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
+  const tahun = document.getElementById('laporanTahunAjaran').value;
   const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
 
-  if (!ekskulId || !tahunAjaran) { showError('Pilih ekskul dan tahun ajaran!'); return; }
+  if (!ekskulId || !tahun) { showError('Pilih ekskul dan tahun!'); return; }
 
   const btn = document.getElementById('btnDownloadKehadiran');
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ MENYIAPKAN...'; }
 
   try {
-    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama, pembina, nip_pembina').eq('id', ekskulId).single();
-    const namaEkskul = ekskulInfo?.nama || '-';
-    const namaPembina = ekskulInfo?.pembina || '-';
-    const nipPembina = ekskulInfo?.nip_pembina || '-';
+    // Ambil nama ekskul, NIP dan nama pembina sekaligus
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul')
+      .select('nama_ekskul, pembina, nama_pembina').eq('id', ekskulId).single();
+    const namaEkskul  = ekskulInfo?.nama_ekskul  || '-';
+    const nipPembina  = ekskulInfo?.pembina       || '-';  // pembina = NIP
+    const namaPembina = ekskulInfo?.nama_pembina  || '-';  // nama_pembina = nama
 
     let query = supaClient.from('absen_ekskul').select('nis, nama, kelas, tanggal, status')
-      .eq('ekskul_id', ekskulId).eq('tahun_ajaran', tahunAjaran).order('tanggal', { ascending: true });
+      .eq('ekskul_id', ekskulId).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
     const { data, error } = await query;
@@ -1717,7 +1719,7 @@ async function downloadLaporanKehadiranEkskul() {
       <h2>LAPORAN KEHADIRAN EKSKUL ${namaEkskul.toUpperCase()}</h2>
       <div class="info"><table>
         <tr><td class="lbl">Ekskul</td><td>: ${namaEkskul}</td></tr>
-        <tr><td class="lbl">Tahun Ajaran</td><td>: ${tahunAjaran}</td></tr>
+        <tr><td class="lbl">Tahun</td><td>: ${tahun}</td></tr>
         ${filterKelas ? `<tr><td class="lbl">Kelas</td><td>: ${filterKelas}</td></tr>` : ''}
         <tr><td class="lbl">Pembina</td><td>: ${namaPembina}</td></tr>
         <tr><td class="lbl">NIP</td><td>: ${nipPembina}</td></tr>
@@ -1742,23 +1744,24 @@ async function downloadLaporanKehadiranEkskul() {
 
 async function downloadLaporanCatatanEkskul() {
   const ekskulId = document.getElementById('laporanEkskulSelect').value;
-  const tahunAjaran = document.getElementById('laporanTahunAjaran').value;
+  const tahun = document.getElementById('laporanTahunAjaran').value;
   const filterKelas = document.getElementById('laporanFilterKelas')?.value || '';
   const modeTanggal = document.getElementById('modeTanggalBtn')?.classList.contains('active') !== false;
 
-  if (!ekskulId || !tahunAjaran) { showError('Pilih ekskul dan tahun ajaran!'); return; }
+  if (!ekskulId || !tahun) { showError('Pilih ekskul dan tahun!'); return; }
 
   const btn = document.getElementById('btnDownloadCatatan');
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ MENYIAPKAN...'; }
 
   try {
-    const { data: ekskulInfo } = await supaClient.from('master_ekskul').select('nama, pembina, nip_pembina').eq('id', ekskulId).single();
-    const namaEkskul = ekskulInfo?.nama || '-';
-    const namaPembina = ekskulInfo?.pembina || '-';
-    const nipPembina = ekskulInfo?.nip_pembina || '-';
+    const { data: ekskulInfo } = await supaClient.from('master_ekskul')
+      .select('nama_ekskul, pembina, nama_pembina').eq('id', ekskulId).single();
+    const namaEkskul  = ekskulInfo?.nama_ekskul  || '-';
+    const nipPembina  = ekskulInfo?.pembina       || '-';  // pembina = NIP
+    const namaPembina = ekskulInfo?.nama_pembina  || '-';  // nama_pembina = nama
 
     let query = supaClient.from('catatan_ekskul').select('nis, nama, kelas, tanggal, catatan')
-      .eq('ekskul_id', ekskulId).eq('tahun_ajaran', tahunAjaran).order('tanggal', { ascending: true });
+      .eq('ekskul_id', ekskulId).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
     const { data, error } = await query;
@@ -1787,9 +1790,10 @@ async function downloadLaporanCatatanEkskul() {
       <h2>LAPORAN CATATAN EKSKUL ${namaEkskul.toUpperCase()}</h2>
       <div class="info"><table>
         <tr><td class="lbl">Ekskul</td><td>: ${namaEkskul}</td></tr>
-        <tr><td class="lbl">Tahun Ajaran</td><td>: ${tahunAjaran}</td></tr>
+        <tr><td class="lbl">Tahun</td><td>: ${tahun}</td></tr>
         ${filterKelas ? `<tr><td class="lbl">Kelas</td><td>: ${filterKelas}</td></tr>` : ''}
         <tr><td class="lbl">Pembina</td><td>: ${namaPembina}</td></tr>
+        <tr><td class="lbl">NIP</td><td>: ${nipPembina}</td></tr>
       </table></div>`;
 
     const ttdBlock = `<div class="ttd"><p>Pasaman, ${todayStr}</p><p>Pembina Ekskul</p><div class="space"></div><p>${namaPembina}</p><p>NIP. ${nipPembina}</p></div>`;
