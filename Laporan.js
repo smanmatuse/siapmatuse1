@@ -1530,7 +1530,7 @@ async function loadLaporanKehadiran(ekskulId, tahun, filterKelas = '') {
     let query = supaClient
       .from('absen_ekskul')
       .select('nis, nama, kelas, tanggal, status')
-      .eq('ekskul_id', ekskulId)
+      .eq('nama_ekskul', namaEkskul)
       .eq('tahun', parseInt(tahun))
       .order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
@@ -1594,7 +1594,7 @@ async function loadLaporanCatatan(ekskulId, tahun, mode, filterKelas = '') {
     let query = supaClient
       .from('catatan_ekskul')
       .select('nis, nama, kelas, tanggal, catatan')
-      .eq('ekskul_id', ekskulId)
+      .eq('nama_ekskul', namaEkskul)
       .eq('tahun', parseInt(tahun))
       .order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
@@ -1676,8 +1676,9 @@ async function downloadLaporanKehadiranEkskul() {
     const nipPembina  = ekskulInfo?.pembina       || '-';  // pembina = NIP
     const namaPembina = ekskulInfo?.nama_pembina  || '-';  // nama_pembina = nama
 
-    let query = supaClient.from('absen_ekskul').select('nis, nama, kelas, tanggal, status')
-      .eq('ekskul_id', ekskulId).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
+    let query = supaClient.from('absen_ekskul')
+      .select('nis, nama, kelas, tanggal, status')
+      .eq('nama_ekskul', namaEkskul).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
     const { data, error } = await query;
@@ -1760,8 +1761,9 @@ async function downloadLaporanCatatanEkskul() {
     const nipPembina  = ekskulInfo?.pembina       || '-';  // pembina = NIP
     const namaPembina = ekskulInfo?.nama_pembina  || '-';  // nama_pembina = nama
 
-    let query = supaClient.from('catatan_ekskul').select('nis, nama, kelas, tanggal, catatan')
-      .eq('ekskul_id', ekskulId).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
+    let query = supaClient.from('catatan_ekskul')
+      .select('nis, nama, kelas, tanggal, catatan')
+      .eq('nama_ekskul', namaEkskul).eq('tahun', parseInt(tahun)).order('tanggal', { ascending: true });
     if (filterKelas) query = query.eq('kelas', filterKelas);
 
     const { data, error } = await query;
