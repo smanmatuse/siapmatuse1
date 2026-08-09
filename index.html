@@ -2984,7 +2984,7 @@
         const { data: absenData, error: errAbsen } = await supaClient
           .from('absen_ekskul')
           .select('nis, status')
-          .eq('ekskul_id', ekskulId)
+          .eq('nama_ekskul', ekskulNama)
           .eq('tanggal', tanggal)
           .eq('tahun', tahunInt);
           
@@ -2994,7 +2994,7 @@
         const { data: catatanData, error: errCatatan } = await supaClient
           .from('catatan_ekskul')
           .select('nis, catatan')
-          .eq('ekskul_id', ekskulId)
+          .eq('nama_ekskul', ekskulNama)
           .eq('tanggal', tanggal)
           .eq('tahun', tahunInt);
           
@@ -3097,11 +3097,11 @@
 
     function simpanAbsenEkskul() {
       const ekskulSelect = document.getElementById('ekskulSelect');
-      const ekskulId = ekskulSelect.value;
+      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('absenTanggal').value;
 
-      if (!ekskulId || !tahunAjaran || !tanggal) {
+      if (!ekskulNama || !tahunAjaran || !tanggal) {
         showError('Data belum lengkap!');
         return;
       }
@@ -3374,11 +3374,11 @@
 
     function updateAbsenEkskul() {
       const ekskulSelect = document.getElementById('ekskulSelect');
-      const ekskulId = ekskulSelect.value;
+      const ekskulNama = ekskulSelect.options[ekskulSelect.selectedIndex]?.text || '';
       const tahunAjaran = document.getElementById('tahunAjaran').value;
       const tanggal = document.getElementById('editEkskulTanggal').value;
 
-      if (!ekskulId || !tahunAjaran || !tanggal) {
+      if (!ekskulNama || !tahunAjaran || !tanggal) {
         showError('Data tidak lengkap!');
         return;
       }
@@ -3424,13 +3424,13 @@
           // 1. Delete absen lama untuk NIS terkait
           await supaClient.from('absen_ekskul')
             .delete()
-            .eq('ekskul_id', ekskulId)
+            .eq('nama_ekskul', ekskulNama)
             .eq('tanggal', tanggal)
             .in('nis', nisList);
             
           // 2. Insert absen baru
           const absenInserts = dataToSave.map(d => ({
-            ekskul_id: ekskulId,
+            nama_ekskul: ekskulNama,
             nis: d.nis,
             nama: d.nama,
             kelas: d.kelas,
@@ -3445,7 +3445,7 @@
           // 3. Delete catatan lama
           await supaClient.from('catatan_ekskul')
             .delete()
-            .eq('ekskul_id', ekskulId)
+            .eq('nama_ekskul', ekskulNama)
             .eq('tanggal', tanggal)
             .in('nis', nisList);
             
@@ -3453,7 +3453,7 @@
           const catatanInserts = dataToSave
             .filter(d => d.catatan.trim() !== '')
             .map(d => ({
-              ekskul_id: ekskulId,
+              nama_ekskul: ekskulNama,
               nis: d.nis,
               nama: d.nama,
               kelas: d.kelas,
