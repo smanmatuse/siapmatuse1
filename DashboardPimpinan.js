@@ -288,9 +288,14 @@ async function renderPimpinanKehadiran(forceRefresh = false) {
       }
     }
 
-    // Ambil Daftar Kelas dari tabel kelas
+    // Ambil Daftar Kelas dari tabel kelas, jika kosong/gagal gunakan dari App.config
     const { data: kelasData } = await supaClient.from('data_kelas').select('kelas').order('kelas', { ascending: true });
-    const daftarKelas = kelasData ? kelasData.map(k => k.kelas) : [];
+    let daftarKelas = [];
+    if (kelasData && kelasData.length > 0) {
+      daftarKelas = kelasData.map(k => k.kelas);
+    } else if (App && App.config && App.config.kelasReguler) {
+      daftarKelas = App.config.kelasReguler;
+    }
 
     // ==========================================
     // FASE 2: AGREGASI DATA
@@ -1296,7 +1301,6 @@ function tampilkanPimpinanSikap(r) {
 
   document.getElementById('pimpinan_sikap').innerHTML = html;
 }
-
 // ============================================================
 // ============ FUNGSI BOBOT SISWA (PIMPINAN) =================
 // ============================================================
@@ -1304,8 +1308,16 @@ async function renderPimpinanBobot(forceRefresh = false) {
   const kelasSelect = document.getElementById('filterKelasBobotPimpinan');
   const bulanSelect = document.getElementById('filterBulanBobotPimpinan');
   
-  // Ambil kelas dari config jika tidak ada yg terpilih
-  const defaultKelas = (App.config && App.config.kelasReguler && App.config.kelasReguler.length > 0) ? App.config.kelasReguler[0] : 'E1';
+  const { data: kelasData } = await supaClient.from('data_kelas').select('kelas').order('kelas', { ascending: true });
+  let daftarKelas = [];
+  if (kelasData && kelasData.length > 0) {
+    daftarKelas = kelasData.map(k => k.kelas);
+  } else {
+    daftarKelas = ['E1', 'E2', 'E3', 'E4', 'E5', 'F1KIM', 'F1FIS', 'F1BIO', 'F2KIM', 'F2FIS', 'F2BIO']; // Fallback
+  }
+  
+  // Ambil kelas pertama dari daftar jika tidak ada yg terpilih
+  const defaultKelas = daftarKelas.length > 0 ? daftarKelas[0] : 'E1';
   const kelas = kelasSelect ? kelasSelect.value : defaultKelas;
   const bulan = bulanSelect ? bulanSelect.value : 'ALL';
 
@@ -1371,7 +1383,7 @@ async function renderPimpinanBobot(forceRefresh = false) {
 
     AppCache.set(cacheKey, resultList, 10);
     showLoading(false);
-    tampilkanPimpinanBobot(resultList, kelas, bulan);
+    tampilkanPimpinanBobot(resultList, kelas, bulan, daftarKelas);
 
   } catch (err) {
     showLoading(false);
@@ -1379,11 +1391,15 @@ async function renderPimpinanBobot(forceRefresh = false) {
   }
 }
 
-function tampilkanPimpinanBobot(dataBobot, currentKelas, currentBulan) {
+function tampilkanPimpinanBobot(dataBobot, currentKelas, currentBulan, daftarKelas) {
   let kelasOptions = '';
-  App.config.kelasReguler.forEach(k => {
-    kelasOptions += `<option style="color:#333; background:#fff;" value="${k}" ${k === currentKelas ? 'selected' : ''}>${k}</option>`;
-  });
+  if (daftarKelas && daftarKelas.length > 0) {
+    daftarKelas.forEach(k => {
+      kelasOptions += `<option style="color:#333; background:#fff;" value="${k}" ${k === currentKelas ? 'selected' : ''}>${k}</option>`;
+    });
+  } else {
+    kelasOptions = `<option value="${currentKelas}">${currentKelas}</option>`;
+  }
 
   const bulanNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   let bulanOptions = `<option style="color:#333; background:#fff;" value="ALL" ${currentBulan === 'ALL' ? 'selected' : ''}>Semua Bulan</option>`;
