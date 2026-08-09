@@ -2330,14 +2330,14 @@
 
     function displaySiswa(siswa, dataShalat) {
       const jam = document.getElementById('absenJam').value;
-      const isShalatJam = (jam === '1' || jam === '7');
-      const showShalatCell = isShalatJam ? 'table-cell' : 'none';
+      const showShalatSt = jam === '7' ? 'table-cell' : 'none';
+      const showShalatJml = jam === '1' ? 'table-cell' : 'none';
 
       // Tampilkan/sembunyikan header kolom shalat
       const thSt = document.getElementById('thAbsenShalatSt');
       const thJml = document.getElementById('thAbsenShalatJml');
-      if (thSt) thSt.style.display = isShalatJam ? 'table-cell' : 'none';
-      if (thJml) thJml.style.display = isShalatJam ? 'table-cell' : 'none';
+      if (thSt) thSt.style.display = showShalatSt;
+      if (thJml) thJml.style.display = showShalatJml;
 
       dataShalat = dataShalat || {};
       let html = '';
@@ -2381,7 +2381,7 @@
               </div>
               <input type="hidden" id="st_${s.nis}" value="H">
             </td>
-            <td style="display:${showShalatCell}; vertical-align:middle;">
+            <td style="display:${showShalatSt}; vertical-align:middle;">
               <div style="display:flex; gap:6px; justify-content:center;">
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
                   <input type="radio" name="shalat_${s.nis}" value="Y" onchange="setShalatStatus('${s.nis}','Y')" ${shalatSt==='Y'?'checked':''} style="width:20px;height:20px;accent-color:#2e7d32;">
@@ -2398,7 +2398,7 @@
               </div>
               <input type="hidden" id="shalat_st_${s.nis}" value="${shalatSt}">
             </td>
-            <td style="display:${showShalatCell}; vertical-align:middle; text-align:center;">
+            <td style="display:${showShalatJml}; vertical-align:middle; text-align:center;">
               <select id="shalat_jml_${s.nis}" style="padding:4px 6px;font-size:14px;font-weight:bold;border-radius:6px;border:2px solid #b39ddb;width:55px;text-align:center;">${jmlOpts}</select>
             </td>
           </tr>
@@ -2471,8 +2471,8 @@
           shalatJml = parseInt(shalatJmlRaw);
         }
         
-        // Simpan shalat jika status ATAU jumlah diisi
-        if (shalatSt && ['Y','T','H'].includes(shalatSt)) {
+        // Kumpulkan data shalat khusus di jam 1 atau 7 (biarpun kosong/0)
+        if (jam === '1' || jam === '7') {
           dataShalat.push({
             nis, nama, kelas,
             tanggal: tanggal,
@@ -2497,13 +2497,28 @@
 
           
           
-          // HANYA proses hapus/simpan shalat jika Jam 1 atau 7
+          // HANYA proses simpan shalat jika Jam 1 atau 7
           if (jam === '1' || jam === '7') {
-            const { error: delShErr } = await supaClient.from('shalat').delete().eq('kelas', kelas).eq('tanggal', tanggal);
-            if (delShErr) throw delShErr;
-
             if (dataShalat.length > 0) {
-              const { error: shErr } = await supaClient.from('shalat').insert(dataShalat);
+              // Ambil data shalat yang sudah ada di database (agar input jam 7 tidak menghapus jumlah dari jam 1)
+              const { data: existingShalat } = await supaClient.from('shalat').select('*').eq('kelas', kelas).eq('tanggal', tanggal);
+              const existingMap = {};
+              if (existingShalat) {
+                existingShalat.forEach(sh => existingMap[sh.nis] = sh);
+              }
+
+              const mergedShalat = dataShalat.map(newSh => {
+                const oldSh = existingMap[newSh.nis];
+                if (oldSh) {
+                  // Di Jam 1, biarkan jumlah dari form (walau 0), tapi amankan status dari DB
+                  if (jam === '1') newSh.status = oldSh.status;
+                  // Di Jam 7, biarkan status dari form, tapi amankan jumlah dari DB
+                  if (jam === '7') newSh.jumlah = oldSh.jumlah;
+                }
+                return newSh;
+              });
+
+              const { error: shErr } = await supaClient.from('shalat').upsert(mergedShalat, { onConflict: 'nis,tanggal' });
               if (shErr) throw new Error('Gagal simpan shalat: ' + shErr.message);
             }
           }
@@ -2594,13 +2609,13 @@
 
     function displaySiswaForEdit(siswa, existingStatus, existingShalat) {
       const jam = document.getElementById('editJam').value;
-      const isShalatJam = (jam === '1' || jam === '7');
-      const showShalat = isShalatJam ? 'table-cell' : 'none';
+      const showShalatSt = jam === '7' ? 'table-cell' : 'none';
+      const showShalatJml = jam === '1' ? 'table-cell' : 'none';
       // Tampilkan/sembunyikan header kolom shalat
       const thSt = document.getElementById('thEditShalatSt');
       const thJml = document.getElementById('thEditShalatJml');
-      if (thSt) thSt.style.display = showShalat;
-      if (thJml) thJml.style.display = showShalat;
+      if (thSt) thSt.style.display = showShalatSt;
+      if (thJml) thJml.style.display = showShalatJml;
       existingShalat = existingShalat || {};
       const tbody = document.getElementById('editTbody');
       let html = '';
@@ -2643,7 +2658,7 @@
                 <option value="T" ${stT}>T - Terlambat</option>
               </select>
             </td>
-            <td style="display:${showShalat}; vertical-align:middle; text-align:center;">
+            <td style="display:${showShalatSt}; vertical-align:middle; text-align:center;">
               <div style="display:flex; gap:6px; justify-content:center;">
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
                   <input type="radio" name="shalat_edit_${s.nis}" value="Y" onchange="document.getElementById('edit_shalat_st_${s.nis}').value='Y'" ${shalatVal==='Y'?'checked':''} style="width:20px;height:20px;accent-color:#2e7d32;">
@@ -2660,7 +2675,7 @@
               </div>
               <input type="hidden" id="edit_shalat_st_${s.nis}" value="${shalatVal}">
             </td>
-            <td style="display:${showShalat}; vertical-align:middle; text-align:center;">
+            <td style="display:${showShalatJml}; vertical-align:middle; text-align:center;">
               <select id="edit_shalat_jml_${s.nis}" style="padding:4px 6px;font-size:14px;font-weight:bold;border-radius:6px;border:2px solid #b39ddb;width:55px;text-align:center;">
                 ${jmlOptions}
               </select>
@@ -2699,7 +2714,8 @@
           shalatJml = parseInt(shalatJmlRaw);
         }
 
-        if (shalatSt && ['Y','T','H'].includes(shalatSt)) {
+        // Kumpulkan data shalat khusus di jam 1 atau 7 (biarpun kosong/0)
+        if (jam === '1' || jam === '7') {
           dataShalat.push({
             nis, nama, kelas,
             tanggal: tanggal,
@@ -2727,20 +2743,31 @@
           const { error: absenErr } = await supaClient.from('absensi').upsert(absensiData, { onConflict: 'nis,tanggal,mapel,jam' });
           if (absenErr) throw absenErr;
 
-          
-          
-          // HANYA proses hapus/update shalat jika Jam 1 atau 7
+          // HANYA proses simpan shalat jika Jam 1 atau 7
           if (jam === '1' || jam === '7') {
-            const { error: delShErr2 } = await supaClient.from('shalat').delete().eq('kelas', kelas).eq('tanggal', tanggal);
-            if (delShErr2) throw delShErr2;
-
             if (dataShalat.length > 0) {
-              const { error: shErr } = await supaClient.from('shalat').insert(dataShalat);
-              if (shErr) throw new Error('Gagal update shalat: ' + shErr.message);
+              // Ambil data shalat yang sudah ada di database (agar input jam 7 tidak menghapus jumlah dari jam 1)
+              const { data: existingShalat } = await supaClient.from('shalat').select('*').eq('kelas', kelas).eq('tanggal', tanggal);
+              const existingMap = {};
+              if (existingShalat) {
+                existingShalat.forEach(sh => existingMap[sh.nis] = sh);
+              }
+
+              const mergedShalat = dataShalat.map(newSh => {
+                const oldSh = existingMap[newSh.nis];
+                if (oldSh) {
+                  // Di Jam 1, biarkan jumlah dari form (walau 0), tapi amankan status dari DB
+                  if (jam === '1') newSh.status = oldSh.status;
+                  // Di Jam 7, biarkan status dari form, tapi amankan jumlah dari DB
+                  if (jam === '7') newSh.jumlah = oldSh.jumlah;
+                }
+                return newSh;
+              });
+
+              const { error: shErr } = await supaClient.from('shalat').upsert(mergedShalat, { onConflict: 'nis,tanggal' });
+              if (shErr) throw new Error('Gagal simpan shalat: ' + shErr.message);
             }
           }
-  
-  
 
           toggleButtonLoading('button[onclick="updateAbsensi()"]', false);
           const shalatMsg = (jam === '1' || jam === '7') && dataShalat.length > 0 ? ` & ${dataShalat.length} shalat` : '';
