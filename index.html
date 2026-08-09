@@ -7188,7 +7188,7 @@
       }
     }
 
-    function prosesGantiPassword() {
+    async function prosesGantiPassword() {
       const oldPass = document.getElementById('oldPass').value;
       const newPass = document.getElementById('newPass').value;
       if (!oldPass || !newPass) return showCustomAlert('Harap isi Password Lama dan Password Baru!', 'warning');
@@ -7198,25 +7198,48 @@
 
       const username = App.user.profil.username || App.user.profil.email;
 
-      google.script.run
-        .withSuccessHandler(function (r) {
-          document.getElementById('btnGantiPass').innerText = 'SIMPAN PASSWORD';
-          document.getElementById('btnGantiPass').disabled = false;
+      try {
+        // 1. Verifikasi password lama
+        const { data: guruData, error: errCek } = await supaClient
+          .from('data_guru')
+          .select('password')
+          .eq('username', username)
+          .single();
 
-          if (r.success) {
-            showCustomAlert('Password berhasil diubah!', 'success');
-            tutupModalGantiPassword();
-          } else {
-            showCustomAlert('Gagal: ' + r.error, 'error');
-          }
-        })
-        .withFailureHandler(function (e) {
-          showCustomAlert('Error Server: ' + e, 'error');
+        if (errCek || !guruData) {
+          throw new Error('Gagal memeriksa data pengguna.');
+        }
+
+        if (guruData.password !== oldPass) {
+          showCustomAlert('Gagal: Password lama salah!', 'error');
           document.getElementById('btnGantiPass').innerText = 'SIMPAN PASSWORD';
           document.getElementById('btnGantiPass').disabled = false;
-            showError('Gagal: ' + e);
-        })
-        .gantiPassword(username, oldPass, newPass);
+          return;
+        }
+
+        // 2. Update password baru
+        const { error: errUpdate } = await supaClient
+          .from('data_guru')
+          .update({ password: newPass })
+          .eq('username', username);
+
+        if (errUpdate) {
+          throw errUpdate;
+        }
+
+        showCustomAlert('Password berhasil diubah!', 'success');
+        tutupModalGantiPassword();
+        
+        // Kosongkan input
+        document.getElementById('oldPass').value = '';
+        document.getElementById('newPass').value = '';
+
+      } catch (error) {
+        showCustomAlert('Error Server: ' + (error.message || JSON.stringify(error)), 'error');
+      } finally {
+        document.getElementById('btnGantiPass').innerText = 'SIMPAN PASSWORD';
+        document.getElementById('btnGantiPass').disabled = false;
+      }
     }
     // ============================================================
     // ============ CUSTOM OVERLAY LOGIC ==========================
