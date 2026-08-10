@@ -3,8 +3,8 @@
 // Mengambil data langsung dari Supabase tanpa lewat Google Script
 // =====================================================================
 
-async function loadPimpinanDisiplin() {
-  const container = document.getElementById('pimpinan_disiplin_container');
+async function loadPimpinanDisiplin(containerId = 'pimpinan_disiplin_container') {
+  const container = document.getElementById(containerId);
   if (!container) return;
   
   container.innerHTML = `
@@ -129,7 +129,7 @@ async function loadPimpinanDisiplin() {
       return a.isAbsenOke ? 1 : -1;
     });
 
-    renderTabelDisiplin(hasilDisiplin, hariIniStr);
+    renderTabelDisiplin(hasilDisiplin, hariIniStr, containerId);
 
   } catch (error) {
     console.error("Disiplin Error:", error);
@@ -137,12 +137,19 @@ async function loadPimpinanDisiplin() {
   }
 }
 
-function renderTabelDisiplin(disiplin, hariIniStr) {
-  const container = document.getElementById('pimpinan_disiplin_container');
+function renderTabelDisiplin(disiplin, hariIniStr, containerId = 'pimpinan_disiplin_container') {
+  const container = document.getElementById(containerId);
   if (!container) return;
 
+  // Simpan data di global window agar bisa di-copy ke WhatsApp
+  window.lastDisiplinData = disiplin;
+  window.lastDisiplinHari = hariIniStr;
+
   let html = `
-    <h4 style="color:#2e7d32; margin-bottom:10px; text-align:left;">📋 DISIPLIN GURU HARI INI (${hariIniStr.toUpperCase()})</h4>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h4 style="color:#2e7d32; margin:0; text-align:left;">📋 DISIPLIN GURU HARI INI (${hariIniStr.toUpperCase()})</h4>
+      <button onclick="copyDisiplinGuru()" style="background:#2196F3; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px;">📋 Copy WhatsApp</button>
+    </div>
   `;
 
   if (disiplin && disiplin.length > 0) {
@@ -202,6 +209,46 @@ function renderTabelDisiplin(disiplin, hariIniStr) {
   }
 
   container.innerHTML = html;
+}
+
+function copyDisiplinGuru() {
+  const disiplin = window.lastDisiplinData;
+  const hariIniStr = window.lastDisiplinHari;
+  if (!disiplin || disiplin.length === 0) {
+    alert("Tidak ada data disiplin untuk disalin.");
+    return;
+  }
+
+  let text = `*LAPORAN PIKET: DISIPLIN GURU HARI INI*\n*(${hariIniStr.toUpperCase()})*\n\n`;
+
+  disiplin.forEach((d, idx) => {
+    let absenStatusText = "";
+    if (d.isAbsenOke) {
+      absenStatusText = "✅ Absen Kelas";
+    } else {
+      // Kelompokkan mapel/jam yang sama per kelas
+      let map = {};
+      d.missedClasses.forEach(m => {
+        if (!map[m.kelas]) map[m.kelas] = [];
+        map[m.kelas].push(m.jam);
+      });
+      let arrKelas = [];
+      for (const k in map) {
+        arrKelas.push(`kelas ${k} jam ${map[k].join(', ')}`);
+      }
+      absenStatusText = "Belum absen di " + arrKelas.join(' dan ');
+    }
+
+    let jurnalStatusText = d.isJurnalOke ? "✅ Jurnal Harian" : "❌ Jurnal Harian";
+    
+    text += `${idx + 1}. ${d.namaGuru} - ${absenStatusText} | ${jurnalStatusText}\n`;
+  });
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert("Teks berhasil disalin ke clipboard! Silakan paste di WhatsApp.");
+  }).catch(err => {
+    alert("Gagal menyalin teks: " + err);
+  });
 }
 
 // =====================================================================
@@ -707,14 +754,15 @@ function loadTop10SiswaTidakHadir() {
 // ============================================================
 // ============ LAIN-LAIN (BERANDA, AKTIVITAS, SHALAT, DSB) ===
 // ============================================================
-async function renderPimpinanBeranda(forceRefresh = false) {
+async function renderPimpinanBeranda(forceRefresh = false, containerId = 'pimpinan_beranda') {
   const roleLower = App.user.role ? App.user.role.toLowerCase() : '';
-  if (roleLower !== 'pimpinan') return;
+  const isPiket = App.user.username === 'piket';
+  if (roleLower !== 'pimpinan' && !isPiket) return;
 
   if (forceRefresh !== true) {
     const cached = AppCache.get('dashboardPimpinanBeranda');
     if (cached) {
-      tampilkanPimpinanBeranda(cached);
+      tampilkanPimpinanBeranda(cached, containerId);
       return;
     }
   }
@@ -789,14 +837,14 @@ async function renderPimpinanBeranda(forceRefresh = false) {
 
     AppCache.set('dashboardPimpinanBeranda', res, 10);
     showLoading(false);
-    tampilkanPimpinanBeranda(res);
+    tampilkanPimpinanBeranda(res, containerId);
   } catch (err) {
     showLoading(false);
-    document.getElementById('pimpinan_beranda').innerHTML = '<div class="form-section"><p>Gagal memuat data: ' + err.message + '</p></div>';
+    document.getElementById(containerId).innerHTML = '<div class="form-section"><p>Gagal memuat data: ' + err.message + '</p></div>';
   }
 }
 
-function tampilkanPimpinanBeranda(res) {
+function tampilkanPimpinanBeranda(res, containerId = 'pimpinan_beranda') {
   let tableHtml = '';
   if (res.jadwal && res.jadwal.length > 0) {
     tableHtml = `
@@ -837,13 +885,15 @@ function tampilkanPimpinanBeranda(res) {
     </div>`;
   }
 
+  const titleBeranda = (containerId === 'piket_beranda') ? 'BERANDA PIKET' : 'BERANDA PIMPINAN';
+
   const html = `
     <div class="form-section">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-        <h2 style="color:#2e7d32; margin:0;">🏠 BERANDA PIMPINAN</h2>
-        <button class="btn btn-warning" onclick="renderPimpinanBeranda(true)" style="padding: 8px 15px; font-size: 13px; font-weight: bold; border-radius: 8px;">🔄 SEGARKAN DATA</button>
+        <h2 style="color:#2e7d32; margin:0;">🏠 ${titleBeranda}</h2>
+        <button class="btn btn-warning" onclick="renderPimpinanBeranda(true, '${containerId}')" style="padding: 8px 15px; font-size: 13px; font-weight: bold; border-radius: 8px;">🔄 SEGARKAN DATA</button>
       </div>
-      <h3 style="margin-bottom:20px; font-size:1.8rem;">Selamat datang, ${App.user.profil.nama || '-'}</h3>
+      <h3 style="margin-bottom:20px; font-size:1.8rem;">Selamat datang, ${App.user.profil?.nama || App.user.nama || '-'}</h3>
 
       <div style="background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px;">
         <h4 style="color:#1565c0; margin-bottom:20px; display:flex; align-items:center; gap:10px;">
@@ -852,19 +902,19 @@ function tampilkanPimpinanBeranda(res) {
         ${tableHtml}
       </div>
       
-      <!-- TABEL DISIPLIN GURU -->
-      <div id="pimpinan_disiplin_container" style="background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px;"></div>
-      
+      <!-- Container Disiplin -->
+      <div id="${containerId}_disiplin" style="background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 20px;">
+      </div>
     </div>
   `;
 
-  document.getElementById('pimpinan_beranda').innerHTML = html;
+  document.getElementById(containerId).innerHTML = html;
   
-  // Panggil fungsi Disiplin dari DashboardPimpinan.js
-  if (typeof loadPimpinanDisiplin === 'function') {
-    loadPimpinanDisiplin();
-  }
+  // Panggil disiplin (gunakan container unik berdasarkan role)
+  loadPimpinanDisiplin(`${containerId}_disiplin`);
 }
+
+
 
 async function renderPimpinanAktivitas(forceRefresh = false) {
   if (forceRefresh !== true) {
