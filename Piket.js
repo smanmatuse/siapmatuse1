@@ -3,6 +3,16 @@
 
 let allGuruData = [];
 
+// Memuat beranda piket dengan menggunakan fungsi dari Pimpinan
+async function renderPiketBeranda() {
+  if (typeof renderPimpinanBeranda === 'function') {
+    // Memanggil renderPimpinanBeranda tapi diarahkan ke div 'piket_beranda'
+    renderPimpinanBeranda(false, 'piket_beranda');
+  } else {
+    document.getElementById('piket_beranda').innerHTML = '<p style="color:red">Modul pimpinan belum dimuat.</p>';
+  }
+}
+
 // Membantu untuk meng-override render absen reguler jika usernya piket
 async function renderAbsensiPiket() {
   const container = document.getElementById('absenRegulerContainer');
