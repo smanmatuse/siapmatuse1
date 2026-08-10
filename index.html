@@ -1339,6 +1339,7 @@
       <!-- AREA KONTEN -->
       <div class="content">
         <div id="beranda" class="menu-content" style="display:none;"></div>
+        <div id="piket_beranda" class="menu-content" style="display:none;"></div>
         <div id="absensi" class="menu-content" style="display:none;"></div>
         <div id="ekskul" class="menu-content" style="display:none;"></div>
         <div id="catatan" class="menu-content" style="display:none;"></div>
@@ -1726,8 +1727,8 @@
       let defaultMenu = 'beranda';
       const roleLower = App.user.role ? App.user.role.toLowerCase() : '';
       if (roleLower === 'ortu' || roleLower === 'orangtua' || roleLower === 'orang tua') defaultMenu = 'orang_tua';
-      if (roleLower === 'pimpinan') defaultMenu = 'pimpinan_beranda';
-      if (App.user.username === 'piket') defaultMenu = 'absensi';
+      if (App.user.username === 'pimpinan') defaultMenu = 'pimpinan_beranda';
+      if (App.user.username === 'piket') defaultMenu = 'piket_beranda';
 
       showMenu(defaultMenu);
     }
@@ -1782,6 +1783,7 @@
 
       if (App.user.username === 'piket') {
         navItems = [
+          { id: 'piket_beranda', label: '🏠', text: 'BERANDA PIKET' },
           { id: 'absensi', label: '📋', text: 'ABSENSI PIKET' }
         ];
       } else if (roleLower === 'guru') {
@@ -1878,6 +1880,8 @@
         switchWaliTab('tabInputPembinaan');
       } else if (menuId === 'laporan') {
         renderLaporan();
+      } else if (menuId === 'piket_beranda') {
+        if (typeof renderPiketBeranda === 'function') renderPiketBeranda();
       } else if (menuId === 'pimpinan_beranda') {
         renderPimpinanBeranda();
       } else if (menuId === 'pimpinan_kehadiran') {
@@ -2357,8 +2361,10 @@
       siswa.forEach((s, i) => {
         const shalatJml = dataShalat[s.nis]?.jumlah ?? 0;
         const shalatSt  = dataShalat[s.nis]?.status || '';
+        const isHalangan = (shalatSt === 'H');
         const jmlOpts   = [0,1,2,3,4,5].map(n =>
-          `<option value="${n}" ${shalatJml === n ? 'selected' : ''}>${n}</option>`).join('');
+          `<option value="${n}" ${(!isHalangan && shalatJml === n) ? 'selected' : ''}>${n}</option>`
+        ).join('') + `<option value="H" ${isHalangan ? 'selected' : ''}>H</option>`;
 
         html += `
           <tr>
@@ -2397,15 +2403,15 @@
             <td style="display:${showShalatSt}; vertical-align:middle;">
               <div style="display:flex; gap:6px; justify-content:center;">
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_${s.nis}" value="Y" onchange="setShalatStatus('${s.nis}','Y')" ${shalatSt==='Y'?'checked':''} style="width:20px;height:20px;accent-color:#2e7d32;">
+                  <input type="radio" name="shalat_${s.nis}" value="Y" onclick="toggleShalatStatus(this, 'shalat_st_${s.nis}','Y')" ${shalatSt==='Y'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#2e7d32;">
                   <span style="font-size:12px;color:#2e7d32;font-weight:bold;">Y</span>
                 </label>
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_${s.nis}" value="T" onchange="setShalatStatus('${s.nis}','T')" ${shalatSt==='T'?'checked':''} style="width:20px;height:20px;accent-color:#c62828;">
+                  <input type="radio" name="shalat_${s.nis}" value="T" onclick="toggleShalatStatus(this, 'shalat_st_${s.nis}','T')" ${shalatSt==='T'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#c62828;">
                   <span style="font-size:12px;color:#c62828;font-weight:bold;">T</span>
                 </label>
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_${s.nis}" value="H" onchange="setShalatStatus('${s.nis}','H')" ${shalatSt==='H'?'checked':''} style="width:20px;height:20px;accent-color:#ff9800;">
+                  <input type="radio" name="shalat_${s.nis}" value="H" onclick="toggleShalatStatus(this, 'shalat_st_${s.nis}','H')" ${shalatSt==='H'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#ff9800;">
                   <span style="font-size:12px;color:#ff9800;font-weight:bold;">H</span>
                 </label>
               </div>
@@ -2426,6 +2432,19 @@
 
     function setShalatStatus(nis, status) {
       document.getElementById(`shalat_st_${nis}`).value = status;
+    }
+
+    function toggleShalatStatus(radio, targetId, status) {
+      if (radio.dataset.wasChecked === 'true') {
+        radio.checked = false;
+        radio.dataset.wasChecked = 'false';
+        document.getElementById(targetId).value = '';
+      } else {
+        const group = document.getElementsByName(radio.name);
+        group.forEach(r => r.dataset.wasChecked = 'false');
+        radio.dataset.wasChecked = 'true';
+        document.getElementById(targetId).value = status;
+      }
     }
 
     function validateAllStatus() {
@@ -2478,11 +2497,15 @@
         dataAbsen.push({ nis, nama, status });
 
         // Shalat — opsional
-        const shalatSt  = document.getElementById(`shalat_st_${nis}`)?.value || '';
+        let shalatSt  = document.getElementById(`shalat_st_${nis}`)?.value || '';
         const shalatJmlRaw = document.getElementById(`shalat_jml_${nis}`)?.value;
         let shalatJml = 0;
-        if (shalatJmlRaw && shalatJmlRaw !== '') {
-          shalatJml = parseInt(shalatJmlRaw);
+        
+        if (jam === '1' && shalatJmlRaw === 'H') {
+          shalatSt = 'H';
+          shalatJml = 0;
+        } else if (shalatJmlRaw && shalatJmlRaw !== '') {
+          shalatJml = parseInt(shalatJmlRaw) || 0;
         }
         
         // Kumpulkan data shalat khusus di jam 1 atau 7 (biarpun kosong/0)
@@ -2651,11 +2674,13 @@
         const sh_H = (shalatVal === 'H') ? 'selected' : '';
 
         const shalatJml = shalat.jumlah || 0;
+        const isHalanganEdit = (shalatVal === 'H');
         let jmlOptions = '';
         for (let i = 0; i <= 5; i++) {
-          const sel = (i === shalatJml) ? 'selected' : '';
+          const sel = (!isHalanganEdit && i === shalatJml) ? 'selected' : '';
           jmlOptions += `<option value="${i}" ${sel}>${i}</option>`;
         }
+        jmlOptions += `<option value="H" ${isHalanganEdit ? 'selected' : ''}>H</option>`;
 
         html += `
           <tr>
@@ -2676,15 +2701,15 @@
             <td style="display:${showShalatSt}; vertical-align:middle; text-align:center;">
               <div style="display:flex; gap:6px; justify-content:center;">
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_edit_${s.nis}" value="Y" onchange="document.getElementById('edit_shalat_st_${s.nis}').value='Y'" ${shalatVal==='Y'?'checked':''} style="width:20px;height:20px;accent-color:#2e7d32;">
+                  <input type="radio" name="shalat_edit_${s.nis}" value="Y" onclick="toggleShalatStatus(this, 'edit_shalat_st_${s.nis}','Y')" ${shalatVal==='Y'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#2e7d32;">
                   <span style="font-size:12px;color:#2e7d32;font-weight:bold;">Y</span>
                 </label>
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_edit_${s.nis}" value="T" onchange="document.getElementById('edit_shalat_st_${s.nis}').value='T'" ${shalatVal==='T'?'checked':''} style="width:20px;height:20px;accent-color:#c62828;">
+                  <input type="radio" name="shalat_edit_${s.nis}" value="T" onclick="toggleShalatStatus(this, 'edit_shalat_st_${s.nis}','T')" ${shalatVal==='T'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#c62828;">
                   <span style="font-size:12px;color:#c62828;font-weight:bold;">T</span>
                 </label>
                 <label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-                  <input type="radio" name="shalat_edit_${s.nis}" value="H" onchange="document.getElementById('edit_shalat_st_${s.nis}').value='H'" ${shalatVal==='H'?'checked':''} style="width:20px;height:20px;accent-color:#ff9800;">
+                  <input type="radio" name="shalat_edit_${s.nis}" value="H" onclick="toggleShalatStatus(this, 'edit_shalat_st_${s.nis}','H')" ${shalatVal==='H'?'checked data-was-checked="true"':''} style="width:20px;height:20px;accent-color:#ff9800;">
                   <span style="font-size:12px;color:#ff9800;font-weight:bold;">H</span>
                 </label>
               </div>
@@ -2722,11 +2747,15 @@
         const status = document.getElementById(`edit_st_${nis}`).value;
         if (status && status.trim() !== '') dataAbsen.push({ nis, nama, status });
 
-        const shalatSt  = document.getElementById(`edit_shalat_st_${nis}`)?.value || '';
+        let shalatSt  = document.getElementById(`edit_shalat_st_${nis}`)?.value || '';
         const shalatJmlRaw = document.getElementById(`edit_shalat_jml_${nis}`)?.value;
         let shalatJml = 0;
-        if (shalatJmlRaw && shalatJmlRaw !== '') {
-          shalatJml = parseInt(shalatJmlRaw);
+        
+        if (jam === '1' && shalatJmlRaw === 'H') {
+          shalatSt = 'H';
+          shalatJml = 0;
+        } else if (shalatJmlRaw && shalatJmlRaw !== '') {
+          shalatJml = parseInt(shalatJmlRaw) || 0;
         }
 
         // Kumpulkan data shalat khusus di jam 1 atau 7 (biarpun kosong/0)
