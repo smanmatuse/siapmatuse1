@@ -572,8 +572,16 @@ async function downloadLaporanBulanan() {
               let headerAtas = '';
               let headerBawah = '';
               minggu.hari.forEach(h => {
-                headerAtas += `<th colspan="9">${h.nama}<br>${h.tglDisplay}</th>`;
-                headerBawah += `<th style="width:12px;">1</th><th style="width:12px;">2</th><th style="width:12px;">3</th><th style="width:12px;">4</th><th style="width:12px;">5</th><th style="width:12px;">6</th><th style="width:12px;">7</th><th style="width:12px;">8</th><th style="width:12px;">9</th>`;
+                let maxJam = 9;
+                if (h.nama === 'Rabu' || h.nama === 'Kamis' || h.nama === 'Sabtu') maxJam = 8;
+                else if (h.nama === 'Jumat') maxJam = 7;
+                
+                headerAtas += `<th colspan="${maxJam}">${h.nama}<br>${h.tglDisplay}</th>`;
+                let jamHeaders = '';
+                for (let i = 1; i <= maxJam; i++) {
+                  jamHeaders += `<th style="width:12px;">${i}</th>`;
+                }
+                headerBawah += jamHeaders;
               });
 
               html += `
@@ -594,7 +602,11 @@ async function downloadLaporanBulanan() {
               siswaData.forEach((s, idx) => {
                 html += `<tr><td>${idx + 1}</td><td style="text-align:left;">${s.nama}</td>`;
                 minggu.hari.forEach(h => {
-                  for (let jam = 1; jam <= 9; jam++) {
+                  let maxJam = 9;
+                  if (h.nama === 'Rabu' || h.nama === 'Kamis' || h.nama === 'Sabtu') maxJam = 8;
+                  else if (h.nama === 'Jumat') maxJam = 7;
+
+                  for (let jam = 1; jam <= maxJam; jam++) {
                     let status = '';
                     if (mObj.statusJam && mObj.statusJam[s.nis] && mObj.statusJam[s.nis][h.tanggal]) {
                       status = mObj.statusJam[s.nis][h.tanggal][jam] || '';
