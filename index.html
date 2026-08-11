@@ -1727,7 +1727,7 @@
       let defaultMenu = 'beranda';
       const roleLower = App.user.role ? App.user.role.toLowerCase() : '';
       if (roleLower === 'ortu' || roleLower === 'orangtua' || roleLower === 'orang tua') defaultMenu = 'orang_tua';
-      if (App.user.username === 'pimpinan') defaultMenu = 'pimpinan_beranda';
+      if (roleLower === 'pimpinan') defaultMenu = 'pimpinan_beranda';
       if (App.user.username === 'piket') defaultMenu = 'piket_beranda';
 
       showMenu(defaultMenu);
