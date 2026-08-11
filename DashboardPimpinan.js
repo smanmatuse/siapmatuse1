@@ -827,6 +827,26 @@ async function renderPimpinanBeranda(forceRefresh = false, containerId = 'pimpin
         let jamStr = currentGroup.startJam === currentGroup.endJam ? `${currentGroup.startJam}` : `${currentGroup.startJam}-${currentGroup.endJam}`;
         groupedJadwal.push({ nama_guru: guruMap[currentGroup.username_guru] || currentGroup.username_guru, jam: jamStr, kelas: currentGroup.kelas, mapel: currentGroup.mapel });
       }
+
+      groupedJadwal.sort((a, b) => {
+        const isRegulerA = (typeof KELAS_REGULER !== 'undefined') ? KELAS_REGULER.includes(a.kelas) : /^[EF]\d/.test(a.kelas);
+        const isRegulerB = (typeof KELAS_REGULER !== 'undefined') ? KELAS_REGULER.includes(b.kelas) : /^[EF]\d/.test(b.kelas);
+
+        if (isRegulerA !== isRegulerB) {
+          return isRegulerA ? -1 : 1;
+        }
+
+        const jamA = parseInt(a.jam.split('-')[0]);
+        const jamB = parseInt(b.jam.split('-')[0]);
+
+        if (isRegulerA) {
+          if (a.kelas !== b.kelas) return a.kelas.localeCompare(b.kelas);
+          return jamA - jamB;
+        } else {
+          if (jamA !== jamB) return jamA - jamB;
+          return a.nama_guru.localeCompare(b.nama_guru);
+        }
+      });
     }
 
     const res = {
