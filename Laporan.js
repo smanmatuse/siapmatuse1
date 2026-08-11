@@ -971,11 +971,6 @@ async function updateLaporanNilaiFilter() {
         .value { flex: 1; }
         table { width:100%; border-collapse: collapse; margin:20px 0; font-size:11px; }
         th { background: #2e7d32 !important; color: white !important; padding: 8px; text-align: center; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        td { border: 1px solid #a5d6a7; padding: 6px; text-align: center; }
-        .ttd { margin-top: 50px; text-align: right; }
-        .ttd div { margin-top: 60px; }
-        .rekap-col { background: #e8f5e9 !important; font-weight: bold; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: black !important; }
-      </style>
     </head>
     <body>
     `;
@@ -983,88 +978,138 @@ async function updateLaporanNilaiFilter() {
     sortedMonths.forEach((mObj, index) => {
       const mNama = BULAN_NAMA[mObj.mm];
       
-      const rekap = {};
-      siswaData.forEach(s => {
-        rekap[s.nis] = { nama: s.nama, Y: 0, T: 0, H: 0, totalJml: 0, totalJmlSejakAgustus: 0, hariAdaSejakAgustus: 0 };
-      });
+      const mingguArray = [];
+      let mingguKe = 1;
+      let startDate = new Date(mObj.yyyy, mObj.mm - 1, 1);
+      while (startDate.getDay() !== 1) {
+        startDate.setDate(startDate.getDate() + 1);
+      }
 
-      mObj.records.forEach(row => {
-        if (rekap[row.nis]) {
-          rekap[row.nis][row.status] = (rekap[row.nis][row.status] || 0) + 1;
-          rekap[row.nis].totalJml += (row.jumlah || 0);
-          
-          if (row.tanggal >= '2026-08-10') {
-            rekap[row.nis].totalJmlSejakAgustus += (row.jumlah || 0);
-            rekap[row.nis].hariAdaSejakAgustus++;
-          }
+      while (startDate.getMonth() + 1 === mObj.mm && startDate.getFullYear() === mObj.yyyy) {
+        const minggu = {
+          mingguKe: mingguKe,
+          tanggalMulai: new Date(startDate),
+          tanggalAkhir: new Date(startDate.getTime() + 5 * 24 * 60 * 60 * 1000), // Sabtu
+          hari: []
+        };
+        for (let i = 0; i < 6; i++) {
+          const tglHari = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+          const tglStr = `${tglHari.getFullYear()}-${String(tglHari.getMonth() + 1).padStart(2, '0')}-${String(tglHari.getDate()).padStart(2, '0')}`;
+          const hariNama = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][i];
+          minggu.hari.push({ tanggal: tglStr, nama: hariNama, tglDisplay: `${String(tglHari.getDate()).padStart(2, '0')}/${String(tglHari.getMonth() + 1).padStart(2, '0')}` });
         }
-      });
+        mingguArray.push(minggu);
+        startDate.setDate(startDate.getDate() + 7);
+        mingguKe++;
+      }
 
-      html += `
-        ${KOP_SURAT_LAPORAN}
-        <div class="header">
-          <h3 style="text-align:center; margin-bottom:20px; text-transform:uppercase;">REKAPITULASI ABSENSI SHALAT</h3>
-          <div class="header-item"><span class="label">Kelas</span><span class="value">: ${kelas}</span></div>
-          <div class="header-item"><span class="label">Wali Kelas</span><span class="value">: ${namaWali}</span></div>
-          <div class="header-item"><span class="label">Periode</span><span class="value">: ${mNama} ${mObj.yyyy}</span></div>
-        </div>
+      mingguArray.forEach((minggu, mIdx) => {
+        if (mIdx > 0 || index > 0) {
+          html += `<div class="page-break"></div>`;
+        }
+
+        html += `
+          ${KOP_SURAT_LAPORAN}
+          <div class="header">
+            <h3 style="text-align:center; margin-bottom:20px; text-transform:uppercase;">REKAPITULASI SHALAT PESERTA DIDIK</h3>
+            <div class="header-item"><span class="label">Kelas</span><span class="value">: ${kelas}</span></div>
+            <div class="header-item"><span class="label">Wali Kelas</span><span class="value">: ${namaWali}</span></div>
+            <div class="header-item"><span class="label">Periode</span><span class="value">: Minggu ${minggu.mingguKe} (${minggu.tanggalMulai.toLocaleDateString('id-ID')} - ${minggu.tanggalAkhir.toLocaleDateString('id-ID')})</span></div>
+          </div>
+        `;
+
+        let headerAtas = '';
+        let headerBawah = '';
+        minggu.hari.forEach(h => {
+          headerAtas += `<th colspan="2">${h.nama}<br>${h.tglDisplay}</th>`;
+          headerBawah += `<th style="width:30px;">Jml Shalat</th><th style="width:30px;">Shalat Zuhur</th>`;
+        });
+
+        html += `
         <table>
           <thead>
             <tr>
-              <th rowspan="2" style="width:30px;">NO</th>
-              <th rowspan="2" style="width:80px;">NIS</th>
-              <th rowspan="2">NAMA SISWA</th>
-              <th colspan="3">PELAKSANAAN SHALAT</th>
-              <th rowspan="2" style="width:70px;">TOTAL HARI</th>
-              <th rowspan="2" style="width:80px;">TOTAL SHALAT</th>
-              <th rowspan="2" style="width:90px;">RATA-RATA</th>
+              <th rowspan="2" style="width:20px;">No</th>
+              <th rowspan="2" style="width:120px;">Nama</th>
+              <th rowspan="2" style="width:60px;">NIS</th>
+              ${headerAtas}
+              <th rowspan="2" style="width:50px;">Total Shalat<br>(1 Minggu)</th>
+              <th colspan="3">Total Shalat Zuhur</th>
+              <th rowspan="2" style="width:50px;">Median Shalat</th>
             </tr>
             <tr>
-              <th style="width:50px;">Ya (Y)</th>
-              <th style="width:50px;">Tidak (T)</th>
-              <th style="width:50px;">Haid (H)</th>
+              ${headerBawah}
+              <th style="width:30px;">Y</th>
+              <th style="width:30px;">T</th>
+              <th style="width:30px;">H</th>
             </tr>
           </thead>
           <tbody>
-      `;
-
-      siswaData.forEach((s, idx) => {
-        const d = rekap[s.nis];
-        const total = d.Y + d.T + d.H;
-        const rataRata = d.hariAdaSejakAgustus > 0 ? Math.round(d.totalJmlSejakAgustus / d.hariAdaSejakAgustus) : 'Belum ada data';
-        const totalJmlDisplay = d.hariAdaSejakAgustus > 0 ? d.totalJmlSejakAgustus : 'Belum ada data';
-        
-        html += `
-          <tr>
-            <td>${idx + 1}</td>
-            <td>${s.nis}</td>
-            <td style="text-align:left">${s.nama}</td>
-            <td>${d.Y}</td>
-            <td>${d.T}</td>
-            <td>${d.H}</td>
-            <td class="rekap-col">${total}</td>
-            <td class="rekap-col">${totalJmlDisplay}</td>
-            <td class="rekap-col">${rataRata}</td>
-          </tr>
         `;
-      });
 
-      html += `
+        siswaData.forEach((s, idx) => {
+          let totalShalat = 0;
+          let yCount = 0;
+          let tCount = 0;
+          let hCount = 0;
+          let jumlahArr = [];
+
+          html += `<tr><td>${idx + 1}</td><td style="text-align:left;">${s.nama}</td><td>${s.nis}</td>`;
+          
+          minggu.hari.forEach(h => {
+            const rowData = mObj.records.find(r => r.nis === s.nis && r.tanggal === h.tanggal);
+            
+            let jml = '';
+            let status = '';
+            let jmlNum = 0;
+            
+            if (rowData) {
+              jml = rowData.jumlah !== null && rowData.jumlah !== undefined ? rowData.jumlah : '';
+              status = rowData.status || '';
+              
+              if (jml !== '') {
+                jmlNum = parseInt(jml);
+                totalShalat += jmlNum;
+              }
+              
+              if (status === 'Y') yCount++;
+              if (status === 'T') tCount++;
+              if (status === 'H') hCount++;
+            }
+            
+            jumlahArr.push(jmlNum);
+            
+            html += `<td>${jml}</td><td>${status}</td>`;
+          });
+          
+          jumlahArr.sort((a, b) => a - b);
+          const mid = Math.floor(jumlahArr.length / 2);
+          const median = (jumlahArr.length % 2 !== 0) ? jumlahArr[mid] : (jumlahArr[mid - 1] + jumlahArr[mid]) / 2;
+
+          html += `
+            <td class="rekap-col">${totalShalat}</td>
+            <td class="rekap-col">${yCount}</td>
+            <td class="rekap-col">${tCount}</td>
+            <td class="rekap-col">${hCount}</td>
+            <td class="rekap-col">${median || 0}</td>
+          </tr>
+          `;
+        });
+
+        html += `
           </tbody>
         </table>
         
         <div class="ttd">
-          Silayang, ${new Date().getDate()} ${mNama} ${new Date().getFullYear()}<br>
-          Wali Kelas<br>
-          <div></div>
-          <b><u>${namaWali}</u></b><br>
-          NIP. ${nipWali}
+          <p>Silayang, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <p>Wali Kelas</p>
+          <div>
+            <b><u>${namaWali}</u></b><br>
+            NIP. ${nipWali}
+          </div>
         </div>
-      `;
-
-      if (index < sortedMonths.length - 1) {
-        html += '<div class="page-break"></div>';
-      }
+        `;
+      });
     });
 
     html += '</body></html>';
