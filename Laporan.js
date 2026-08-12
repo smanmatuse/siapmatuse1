@@ -971,6 +971,11 @@ async function updateLaporanNilaiFilter() {
         .value { flex: 1; }
         table { width:100%; border-collapse: collapse; margin:20px 0; font-size:11px; }
         th { background: #2e7d32 !important; color: white !important; padding: 8px; text-align: center; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        td { border: 1px solid #a5d6a7; padding: 6px; text-align: center; }
+        .ttd { margin-top: 50px; text-align: right; }
+        .ttd div { margin-top: 60px; }
+        .rekap-col { background: #e8f5e9 !important; font-weight: bold; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color: black !important; }
+      </style>
     </head>
     <body>
     `;
