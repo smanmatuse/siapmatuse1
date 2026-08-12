@@ -10,7 +10,7 @@ function renderOrangTua() {
     return;
   }
 
-  const html = \`
+  const html = `
 <div class="form-section">
   <h3>👋 HALO, BAPAK/IBU WALI DARI ${profil.nama}</h3>
   <p style="margin-bottom: 20px; color: #555; font-size: 14px;">Selamat datang di portal informasi siswa.</p>
@@ -73,7 +73,7 @@ function renderOrangTua() {
     <div id="ortuPreviewContent"></div>
   </div>
 </div>
-  \`;
+  `;
 
   document.getElementById('orang_tua').innerHTML = html;
   
@@ -92,25 +92,25 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   if (bulan !== 'ALL' && tahun !== 'ALL') {
     const y = parseInt(tahun);
     const m = parseInt(bulan);
-    startDate = \`${y}-${String(m).padStart(2, '0')}-01\`;
+    startDate = `${y}-${String(m).padStart(2, '0')}-01`;
     const lastDay = new Date(y, m, 0).getDate();
-    endDate = \`${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}\`;
+    endDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   } else if (tahun !== 'ALL') {
-    startDate = \`${tahun}-01-01\`;
-    endDate = \`${tahun}-12-31\`;
+    startDate = `${tahun}-01-01`;
+    endDate = `${tahun}-12-31`;
   }
 
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
-  const todayStr = \`${yyyy}-${mm}-${dd}\`;
+  const todayStr = `${yyyy}-${mm}-${dd}`;
   
   let d = new Date(today);
   const day = d.getDay() || 7; 
   if (day !== 1) d.setHours(-24 * (day - 1));
-  const weekStartStr = \`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}\`;
-  const monthStartStr = \`${yyyy}-${mm}-01\`;
+  const weekStartStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const monthStartStr = `${yyyy}-${mm}-01`;
 
   const absenQueryAll = supaClient.from('absensi').select('tanggal, status').eq('nis', nis);
   const shalatQueryAll = supaClient.from('shalat').select('tanggal, status').eq('nis', nis);
@@ -230,12 +230,12 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   let periodeStr = "Semua Waktu";
   if (bulan !== 'ALL' && tahun !== 'ALL') {
      const monthNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-     periodeStr = \`${monthNames[parseInt(bulan)-1]} ${tahun}\`;
+     periodeStr = `${monthNames[parseInt(bulan)-1]} ${tahun}`;
   } else if (tahun !== 'ALL') {
-     periodeStr = \`Tahun ${tahun}\`;
+     periodeStr = `Tahun ${tahun}`;
   } else if (bulan !== 'ALL') {
      const monthNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-     periodeStr = \`${monthNames[parseInt(bulan)-1]} (Semua Tahun)\`;
+     periodeStr = `${monthNames[parseInt(bulan)-1]} (Semua Tahun)`;
   }
 
   return {
@@ -310,7 +310,7 @@ async function downloadLaporanOrtu() {
     }
     const signatureStr = signatureDate.toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'});
     
-    const printHtml = \`
+    const printHtml = `
       <html>
       <head>
         <title>Rapor Orang Tua - ${data.siswa.nama}</title>
@@ -335,7 +335,7 @@ async function downloadLaporanOrtu() {
         </div>
       </body>
       </html>
-    \`;
+    `;
     
     openReportAndPrint(printHtml);
   } catch(err) {
