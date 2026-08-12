@@ -243,7 +243,7 @@ async function downloadLaporanGuru() {
           </table>
           
           <div class="ttd">
-            <p>Silayang, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p>Silayang, ${new Date(mObj.yyyy, mObj.mm, 0).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
             <p>Guru Mata Pelajaran,</p>
             <div>
               <b><u>${namaGuru}</u></b><br>
@@ -511,7 +511,7 @@ async function downloadLaporanBulanan() {
           </table>
           
           <div class="ttd">
-            <p>Silayang, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p>Silayang, ${new Date(mObj.yyyy, mObj.mm, 0).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
             <p>Wali Kelas</p>
             <div>
               <b><u>${namaWali}</u></b><br>
@@ -621,7 +621,7 @@ async function downloadLaporanBulanan() {
             </tbody>
           </table>
           <div class="ttd">
-            <p>Silayang, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p>Silayang, ${new Date(mObj.yyyy, mObj.mm, 0).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
             <p>Wali Kelas</p>
             <div>
               <b><u>${namaWali}</u></b><br>
@@ -1106,7 +1106,7 @@ async function updateLaporanNilaiFilter() {
         </table>
         
         <div class="ttd">
-          <p>Silayang, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <p>Silayang, ${new Date(mObj.yyyy, mObj.mm, 0).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
           <p>Wali Kelas</p>
           <div>
             <b><u>${namaWali}</u></b><br>
