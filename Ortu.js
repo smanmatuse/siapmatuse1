@@ -137,22 +137,43 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   const stsMap = (s) => (s === 'H' || s === 'I' || s === 'S' || s === 'A' || s === 'C' || s === 'T') ? s : 'H';
   
   if (resAbsen.data) {
+    const getPrioritasStatus = (s) => {
+      switch (s) {
+        case 'C': return 6;
+        case 'A': return 5;
+        case 'S': return 4;
+        case 'I': return 3;
+        case 'T': return 2;
+        case 'H': return 1;
+        default: return 0;
+      }
+    };
+
+    const statusHarianAll = {};
     resAbsen.data.forEach(r => {
       const s = stsMap(r.status);
-      if (r.tanggal === todayStr) absenRealtime.hariIni[s]++;
-      if (r.tanggal >= weekStartStr) absenRealtime.mingguIni[s]++;
-      if (r.tanggal >= monthStartStr) absenRealtime.bulanIni[s]++;
+      const prev = statusHarianAll[r.tanggal];
+      if (!prev || getPrioritasStatus(s) > getPrioritasStatus(prev)) {
+        statusHarianAll[r.tanggal] = s;
+      }
+    });
+
+    for (const tgl in statusHarianAll) {
+      const s = statusHarianAll[tgl];
+      if (tgl === todayStr) absenRealtime.hariIni[s]++;
+      if (tgl >= weekStartStr) absenRealtime.mingguIni[s]++;
+      if (tgl >= monthStartStr) absenRealtime.bulanIni[s]++;
       
       if (bulan === 'ALL' && tahun === 'ALL') {
         if (s === 'C') absenFiltered['B']++; 
         else if (s === 'T') absenFiltered['C']++; 
         else if (absenFiltered[s] !== undefined) absenFiltered[s]++;
-      } else if (r.tanggal >= startDate && r.tanggal <= endDate) {
+      } else if (tgl >= startDate && tgl <= endDate) {
         if (s === 'C') absenFiltered['B']++;
         else if (s === 'T') absenFiltered['C']++;
         else if (absenFiltered[s] !== undefined) absenFiltered[s]++;
       }
-    });
+    }
   }
 
   if (resShalat.data) {
