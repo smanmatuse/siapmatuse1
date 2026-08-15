@@ -7370,7 +7370,7 @@
               <td style="text-align:center; font-weight:bold; color:#2e7d32; padding:10px;">+${poinPositif}</td>
               <td style="text-align:center; font-weight:bold; color:#b71c1c; padding:10px;">${poinNegatif}</td>
               <td style="text-align:center; padding:10px;">
-                <button class="btn btn-primary" style="padding:6px 12px; font-size:12px; font-weight:bold;" onclick="bukaBukuSaku('${s.nis}', '${s.nama.replace(/'/g, "\\'")}')">📖 BUKU SAKU</button>
+                <button class="btn btn-primary" style="padding:6px 12px; font-size:12px; font-weight:bold;" onclick="bukaBukuSaku('${s.nis}', '${s.nama.replace(/'/g, "\\'")}', '${s.kelas}')">📖 BUKU SAKU</button>
               </td>
             </tr>
           `;
@@ -7382,7 +7382,7 @@
       }
     }
 
-    function bukaBukuSaku(nis, nama) {
+    function bukaBukuSaku(nis, nama, kelas) {
       const modal = document.createElement('div');
       modal.className = 'modal';
       modal.id = 'modalBukuSaku';
@@ -7402,181 +7402,22 @@
               <div class="spinner"></div>
               <p>Memuat rekam jejak siswa...</p>
             </div>
-            <div id="bukuSakuContent" style="display:none;"></div>
+            <div id="bukuSakuContent" style="display:none; background:#fff; padding:20px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.05);"></div>
           </div>
         </div>
       `;
       document.body.appendChild(modal);
-      loadDetailBukuSaku(nis);
+      loadDetailBukuSaku(nis, kelas);
     }
 
-    async function loadDetailBukuSaku(nis) {
+    async function loadDetailBukuSaku(nis, kelas) {
       try {
-        const [resShalat, resCatatan, resPelanggaran, resDimensi, resAbsensi, resNilai] = await Promise.all([
-          supaClient.from('shalat').select('*').eq('nis', nis).order('tanggal', { ascending: false }),
-          supaClient.from('catatan').select('*').eq('nis', nis).order('tanggal', { ascending: false }),
-          supaClient.from('pelanggaran').select('*').eq('nis', nis).order('tanggal', { ascending: false }),
-          supaClient.from('master_dimensi').select('*'),
-          supaClient.from('absensi').select('*').eq('nis', nis),
-          supaClient.from('nilai').select('*').eq('nis', nis).order('matapelajaran', { ascending: true }).order('jenistugas', { ascending: true }).order('nopenilaian', { ascending: true })
-        ]);
-
-        let html = '';
-
-        const shalatData = resShalat.data || [];
-        let shalatY = 0, shalatT = 0, shalatH = 0;
-        shalatData.forEach(s => {
-          if (s.status === 'Y') shalatY++;
-          else if (s.status === 'T') shalatT++;
-          else if (s.status === 'H') shalatH++;
-        });
-
-        const absensiData = resAbsensi.data || [];
-        let absS = 0, absI = 0, absA = 0;
-        absensiData.forEach(a => {
-          const ket = (a.keterangan || a.status || '').toUpperCase();
-          if (ket === 'S') absS++;
-          else if (ket === 'I') absI++;
-          else if (ket === 'A') absA++;
-        });
-
-        html += `
-          <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:15px;">
-            <div class="form-section" style="flex:1; min-width:300px; margin-bottom:0;">
-              <h3>📅 Rekap Absensi</h3>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <div style="background:#fff8e1; padding:10px; border-radius:8px; border-left:4px solid #fbc02d; flex:1;">
-                  <div style="font-size:11px; color:#555;">Sakit (S)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#fbc02d;">${absS}</div>
-                </div>
-                <div style="background:#e3f2fd; padding:10px; border-radius:8px; border-left:4px solid #1976d2; flex:1;">
-                  <div style="font-size:11px; color:#555;">Izin (I)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#1976d2;">${absI}</div>
-                </div>
-                <div style="background:#ffebee; padding:10px; border-radius:8px; border-left:4px solid #b71c1c; flex:1;">
-                  <div style="font-size:11px; color:#555;">Alpa (A)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#b71c1c;">${absA}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-section" style="flex:1; min-width:300px; margin-bottom:0;">
-              <h3>🕌 Rekap Ibadah Shalat</h3>
-              <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <div style="background:#e8f5e9; padding:10px; border-radius:8px; border-left:4px solid #2e7d32; flex:1;">
-                  <div style="font-size:11px; color:#555;">Hadir (Y)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#2e7d32;">${shalatY}</div>
-                </div>
-                <div style="background:#ffebee; padding:10px; border-radius:8px; border-left:4px solid #b71c1c; flex:1;">
-                  <div style="font-size:11px; color:#555;">Tidak (T)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#b71c1c;">${shalatT}</div>
-                </div>
-                <div style="background:#fff3e0; padding:10px; border-radius:8px; border-left:4px solid #f57c00; flex:1;">
-                  <div style="font-size:11px; color:#555;">Halangan (H)</div>
-                  <div style="font-size:18px; font-weight:bold; color:#f57c00;">${shalatH}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-
-        const dimensiMap = {};
-        (resDimensi.data || []).forEach(d => { dimensiMap[d.id] = d; });
-
-        const catatanData = resCatatan.data || [];
-        const pelanggaranData = resPelanggaran.data || [];
-        const sikapList = [];
-        catatanData.forEach(c => {
-          const dim = dimensiMap[c.dimensi_id] || {};
-          sikapList.push({
-            tanggal: c.tanggal, tipe: 'POSITIF', tipeClass: 'positif',
-            kategori: dim.dimensi || 'Catatan Baik', detail: dim.elemen || c.catatan,
-            poin: c.poin, keterangan: c.catatan, guru: c.username_guru
-          });
-        });
-        pelanggaranData.forEach(p => {
-          sikapList.push({
-            tanggal: p.tanggal, tipe: 'NEGATIF', tipeClass: 'negatif',
-            kategori: p.jenis, detail: p.perilaku,
-            poin: p.poin, keterangan: p.tindak_lanjut, guru: p.username_guru
-          });
-        });
-
-        sikapList.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
-
-        html += `
-          <div class="form-section">
-            <h3>📝 Riwayat Sikap (Positif & Negatif)</h3>
-            <div style="overflow-x:auto;">
-              <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; min-width:500px;">
-                <thead>
-                  <tr style="background:#e8f5e9; color:#1b5e20;">
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7;">Tanggal</th>
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7;">Tipe</th>
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7;">Kategori / Jenis</th>
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7;">Detail / Perilaku</th>
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7; text-align:center;">Poin</th>
-                    <th style="padding:10px; border-bottom:2px solid #a5d6a7;">Guru</th>
-                  </tr>
-                </thead>
-                <tbody>
-        `;
-
-        if (sikapList.length === 0) {
-          html += '<tr><td colspan="6" style="text-align:center; padding:15px;">Belum ada riwayat sikap</td></tr>';
-        } else {
-          sikapList.forEach(s => {
-            const poinColor = s.tipe === 'POSITIF' ? '#2e7d32' : '#b71c1c';
-            const poinSign = s.tipe === 'POSITIF' ? '+' : '';
-            html += `
-              <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:10px;">${s.tanggal}</td>
-                <td style="padding:10px;"><span class="${s.tipeClass}" style="font-size:11px; padding:2px 6px;">${s.tipe}</span></td>
-                <td style="padding:10px;">${s.kategori}</td>
-                <td style="padding:10px;">${s.detail}<br><small class="text-muted">${s.keterangan || ''}</small></td>
-                <td style="padding:10px; text-align:center; font-weight:bold; color:${poinColor};">${poinSign}${s.poin || 0}</td>
-                <td style="padding:10px; font-size:12px;">${s.guru}</td>
-              </tr>
-            `;
-          });
-        }
-        html += `</tbody></table></div></div>`;
-
-        const nilaiData = resNilai.data || [];
-        html += `
-          <div class="form-section">
-            <h3>📊 Rekap Nilai Akademik</h3>
-            <div style="overflow-x:auto;">
-              <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left; min-width:500px;">
-                <thead>
-                  <tr style="background:#e3f2fd; color:#1565c0;">
-                    <th style="padding:10px; border-bottom:2px solid #90caf9;">Mata Pelajaran</th>
-                    <th style="padding:10px; border-bottom:2px solid #90caf9;">Penilaian</th>
-                    <th style="padding:10px; border-bottom:2px solid #90caf9;">Ke</th>
-                    <th style="padding:10px; border-bottom:2px solid #90caf9;">Tanggal</th>
-                    <th style="padding:10px; border-bottom:2px solid #90caf9; text-align:center;">Nilai</th>
-                  </tr>
-                </thead>
-                <tbody>
-        `;
-
-        if (nilaiData.length === 0) {
-          html += '<tr><td colspan="5" style="text-align:center; padding:15px;">Belum ada nilai akademik</td></tr>';
-        } else {
-          nilaiData.forEach(n => {
-            html += `
-              <tr style="border-bottom:1px solid #eee;">
-                <td style="padding:10px; font-weight:bold;">${n.matapelajaran || '-'}</td>
-                <td style="padding:10px;">${n.jenistugas || '-'}</td>
-                <td style="padding:10px;">${n.nopenilaian || '-'}</td>
-                <td style="padding:10px;">${n.tanggal || '-'}</td>
-                <td style="padding:10px; text-align:center; font-weight:bold; color:${(n.nilai && n.nilai >= 75) ? '#2e7d32' : (n.nilai !== null && n.nilai !== undefined && n.nilai !== '' ? '#b71c1c' : '#000')};">${n.nilai !== null && n.nilai !== undefined && n.nilai !== '' ? n.nilai : '-'}</td>
-              </tr>
-            `;
-          });
-        }
-        html += `</tbody></table></div></div>`;
-
+        // Ambil data menggunakan fungsi yang sama dengan dashboard orang tua, tanpa filter (ALL)
+        const data = await fetchOrtuData(nis, kelas, 'ALL', 'ALL');
+        
+        // Bangun HTML menggunakan fungsi dari Ortu.js (hanya bagian detail, tanpa realtime)
+        const html = buildOrtuDashboardHTML(data);
+        
         document.getElementById('bukuSakuLoading').style.display = 'none';
         const contentDiv = document.getElementById('bukuSakuContent');
         contentDiv.innerHTML = html;
