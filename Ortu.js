@@ -120,7 +120,7 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   const monthStartStr = `${yyyy}-${mm}-01`;
 
   const absenQueryAll = supaClient.from('absensi').select('tanggal, status').eq('nis', nis);
-  const shalatQueryAll = supaClient.from('shalat').select('tanggal, status').eq('nis', nis);
+  const shalatQueryAll = supaClient.from('shalat').select('tanggal, status, jumlah').eq('nis', nis);
   const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, catatan').eq('nis', nis);
   const pelanggaranQueryAll = supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis);
   const pembinaanQueryAll = supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis);
@@ -141,7 +141,7 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   };
   
   const absenFiltered = {H:0,I:0,S:0,A:0,B:0,C:0}; 
-  const shalatFiltered = {Y:0,T:0,H:0};
+  const shalatFiltered = {Y:0, T:0, H:0, rataJumlah: 0};
   let sikapFiltered = [];
   let pembinaanFiltered = [];
   
@@ -188,11 +188,20 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   }
 
   if (resShalat.data) {
+    let sumJumlah = 0;
+    let countHariY = 0;
     resShalat.data.forEach(r => {
       if ((bulan === 'ALL' && tahun === 'ALL') || (r.tanggal >= startDate && r.tanggal <= endDate)) {
         if (r.status === 'Y' || r.status === 'T' || r.status === 'H') shalatFiltered[r.status]++;
+        if (r.status === 'Y' && r.jumlah) {
+          sumJumlah += Number(r.jumlah);
+          countHariY++;
+        }
       }
     });
+    if (countHariY > 0) {
+      shalatFiltered.rataJumlah = (sumJumlah / countHariY).toFixed(1);
+    }
   }
 
   let totalBobot = 0;
@@ -456,9 +465,9 @@ async function downloadLaporanOrtu() {
         <strong>Catatan:</strong> Data detail di bawah ini difilter berdasarkan periode: <strong>${data.periode}</strong>
       </div>
 
-      <div class="form-grid" style="margin-bottom: 20px;">
+      <div style="margin-bottom: 20px;">
         <!-- REKAP KEHADIRAN (FILTERED) -->
-        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-left: 4px solid #43a047; border-radius: 8px;">
+        <div class="form-section" style="padding: 15px; margin-bottom:15px; border: 1px solid #ddd; border-left: 4px solid #43a047; border-radius: 8px;">
           <h4 style="margin:0 0 10px 0; color:#43a047; font-size:14px;">Rekap Kehadiran (${data.periode})</h4>
           <div style="display:flex; justify-content:space-between; gap:2px;">
             <div style="text-align:center;"><div style="font-size:11px; color:#666;">Hadir</div><div style="font-size:16px; font-weight:bold; color:#43a047;">${data.absen.H || 0}</div></div>
@@ -484,6 +493,10 @@ async function downloadLaporanOrtu() {
             <div style="flex:1; text-align:center; background:#e0f2f1; padding:10px; border-radius:8px;">
               <div style="font-size:12px; color:#666;">Haid</div>
               <div style="font-size:20px; font-weight:bold; color:#00897b;">${data.shalat.H}</div>
+            </div>
+            <div style="flex:1; text-align:center; background:#fff3e0; padding:10px; border-radius:8px;">
+              <div style="font-size:12px; color:#666;">Rata-rata/hari</div>
+              <div style="font-size:20px; font-weight:bold; color:#f57c00;">${data.shalat.rataJumlah} <span style="font-size:12px; font-weight:normal;">waktu</span></div>
             </div>
           </div>
         </div>
