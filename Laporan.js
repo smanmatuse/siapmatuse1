@@ -1979,7 +1979,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     supaClient.from('shalat').select('nis, status, tanggal, jumlah').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('catatan').select('nis, dimensi_id, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
-    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').in('nis', nisList),
+    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('catatan_ekskul').select('nis, nama_ekskul, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('pembinaan_wali').select('nis, tanggal, isi_pembinaan, tindak_lanjut').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true})
@@ -2020,6 +2020,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
       ...c, dimensi_nama: mapDimensi[c.dimensi_id]?.elemen || 'Lainnya'
     }));
 
+    // Nilai per mapel+jenis milik siswa ini
     const nilaiSiswa = dataNilai.filter(n => n.nis === sNis);
     const mapelNilai = {};
     nilaiSiswa.forEach(n => {
@@ -2027,6 +2028,34 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
       if (!mapelNilai[n.matapelajaran][n.jenistugas]) mapelNilai[n.matapelajaran][n.jenistugas] = [];
       mapelNilai[n.matapelajaran][n.jenistugas].push(Number(n.nilai));
     });
+
+    // Algoritma silang nilai belum lengkap:
+    // Kumpulkan semua penugasan unik di kelas, cek apakah siswa punya nilai (baris ada & > 0)
+    const penugasanKelas = {};
+    dataNilai.forEach(n => {
+      const key = `${n.matapelajaran}||${n.jenistugas}||${n.nopenilaian}`;
+      penugasanKelas[key] = true;
+    });
+    const nilaiSiswaKeyMap = {};
+    nilaiSiswa.forEach(n => {
+      const key = `${n.matapelajaran}||${n.jenistugas}||${n.nopenilaian}`;
+      nilaiSiswaKeyMap[key] = n.nilai;
+    });
+    const nilaiBelumLengkap = [];
+    const missingPerMapel = {};
+    for (const key in penugasanKelas) {
+      const [mapel, jenis, noPen] = key.split('||');
+      const val = nilaiSiswaKeyMap[key];
+      const kosong = val === null || val === undefined || val === '' || Number(val) === 0;
+      if (kosong) {
+        if (!missingPerMapel[mapel]) missingPerMapel[mapel] = [];
+        missingPerMapel[mapel].push(`${jenis} ke-${noPen}`);
+      }
+    }
+    for (const mapel in missingPerMapel) {
+      nilaiBelumLengkap.push({ mapel, missing: missingPerMapel[mapel] });
+    }
+    nilaiBelumLengkap.sort((a, b) => a.mapel.localeCompare(b.mapel));
 
     const absenEkskulRaw = dataAbsenEkskul.filter(a => a.nis === sNis);
     const ekskulData = {};
@@ -2043,7 +2072,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
 
     const pembinaanWali = dataPembinaanWali.filter(p => p.nis === sNis);
 
-    return { siswa, absen, shalat, pelanggaran, catatan, nilai: mapelNilai, ekskul: ekskulData, pembinaanWali };
+    return { siswa, absen, shalat, pelanggaran, catatan, nilai: mapelNilai, ekskul: ekskulData, pembinaanWali, nilaiBelumLengkap };
   });
 
   return {
@@ -2159,6 +2188,21 @@ function generateHtmlLaporanSiswa(result) {
       nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><thead><tr><th rowspan="2" style="width:30px;">No</th><th rowspan="2">Mata Pelajaran</th><th colspan="4">Rata-rata Nilai Berdasarkan Jenis Tugas</th></tr><tr><th style="width:50px;">TG</th><th style="width:50px;">UH</th><th style="width:50px;">MID</th><th style="width:50px;">SM</th></tr></thead><tbody>${nilaiRows}</tbody></table>`;
     } else { nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><tr><td style="text-align:center;font-style:italic;">Belum ada nilai yang diinput</td></tr></table>`; }
 
+    // Tabel peringatan Nilai Belum Lengkap
+    let nilaiMissingHtml = '';
+    if (item.nilaiBelumLengkap && item.nilaiBelumLengkap.length > 0) {
+      let missingRows = '';
+      item.nilaiBelumLengkap.forEach((m, i) => {
+        missingRows += `<tr><td style="text-align:center;">${i+1}</td><td>${m.mapel}</td><td>${m.missing.join(', ')}</td></tr>`;
+      });
+      nilaiMissingHtml = `
+        <div class="section-title" style="background:#fff3e0; border-left-color:#ff9800;">E. Daftar Nilai Belum Lengkap</div>
+        <table class="data">
+          <thead><tr><th style="width:30px;">No</th><th>Mata Pelajaran</th><th>Penugasan yang Belum Ada Nilai</th></tr></thead>
+          <tbody>${missingRows}</tbody>
+        </table>`;
+    }
+
     const ttdDate = new Date();
     const ttdDateStr = `${ttdDate.getDate()} ${['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][ttdDate.getMonth()]} ${ttdDate.getFullYear()}`;
     
@@ -2180,6 +2224,7 @@ function generateHtmlLaporanSiswa(result) {
         ${pembinaanHtml}
         ${ekskulHtml}
         ${nilaiHtml}
+        ${nilaiMissingHtml}
 
         <div class="ttd">
           Silayang, ${ttdDateStr}<br>
