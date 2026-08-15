@@ -1975,7 +1975,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
   
   // 4. Fetch all data in parallel
   const queries = [
-    supaClient.from('absensi').select('nis, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    supaClient.from('absensi').select('nis, tanggal, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('shalat').select('nis, status, tanggal, jumlah').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('catatan').select('nis, dimensi_id, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
