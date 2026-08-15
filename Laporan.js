@@ -2000,7 +2000,16 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     const sNis = siswa.nis;
 
     const absen = { H: 0, I: 0, S: 0, A: 0, T: 0, C: 0 };
-    dataAbsensi.filter(a => a.nis === sNis).forEach(a => { if (absen[a.status] !== undefined) absen[a.status]++; });
+    const statusHarianAbsenSiswa = {};
+    dataAbsensi.filter(a => a.nis === sNis).forEach(a => {
+      const prev = statusHarianAbsenSiswa[a.tanggal];
+      if (!prev || getPrioritasStatus(a.status) > getPrioritasStatus(prev)) {
+        statusHarianAbsenSiswa[a.tanggal] = (a.status === 'H' || a.status === 'I' || a.status === 'S' || a.status === 'A' || a.status === 'C' || a.status === 'T') ? a.status : 'H';
+      }
+    });
+    for (const tgl in statusHarianAbsenSiswa) {
+      if (absen[statusHarianAbsenSiswa[tgl]] !== undefined) absen[statusHarianAbsenSiswa[tgl]]++;
+    }
 
     const shalat = { Y: 0, N: 0, B: 0 };
     dataShalat.filter(s => s.nis === sNis).forEach(s => { if (shalat[s.status] !== undefined) shalat[s.status]++; });
