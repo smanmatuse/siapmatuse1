@@ -33,6 +33,10 @@ function renderOrangTua() {
     </div>
   </div>
 
+  <div id="ortuRealtimeContainer" style="margin-bottom: 20px;">
+    <p style="text-align:center; padding:20px; color:#888; font-size:13px;">⏳ Memuat ringkasan hari ini...</p>
+  </div>
+
   <div class="form-grid">
     <div class="form-group">
       <label>Bulan:</label>
@@ -80,6 +84,9 @@ function renderOrangTua() {
   const now = new Date();
   document.getElementById('ortuBulan').value = now.getMonth() + 1;
   document.getElementById('ortuTahun').value = now.getFullYear();
+
+  // Auto-load ringkasan realtime di atas filter
+  loadOrtuRealtime();
 }
 
 async function fetchOrtuData(nis, kelas, bulan, tahun) {
@@ -114,13 +121,17 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
 
   const absenQueryAll = supaClient.from('absensi').select('tanggal, status').eq('nis', nis);
   const shalatQueryAll = supaClient.from('shalat').select('tanggal, status').eq('nis', nis);
-  const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, jenis, detail').eq('nis', nis);
-  const pelanggaranQueryAll = supaClient.from('pelanggaran').select('tanggal, poin, jenis, detail').eq('nis', nis);
+  const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, catatan').eq('nis', nis);
+  const pelanggaranQueryAll = supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis);
   const pembinaanQueryAll = supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis);
-  const nilaiQueryAll = supaClient.from('nilai').select('*').eq('nis', nis);
+  // Ambil semua nilai di kelas untuk keperluan deteksi silang (nilai belum lengkap)
+  let nilaiKelasQuery = supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, tanggal').eq('kelas', kelas);
+  if (startDate !== '2000-01-01' || endDate !== '2100-12-31') {
+    nilaiKelasQuery = nilaiKelasQuery.gte('tanggal', startDate).lte('tanggal', endDate);
+  }
   
   const [resAbsen, resShalat, resSikap, resPelanggaran, resPembinaan, resNilai] = await Promise.all([
-    absenQueryAll, shalatQueryAll, sikapQueryAll, pelanggaranQueryAll, pembinaanQueryAll, nilaiQueryAll
+    absenQueryAll, shalatQueryAll, sikapQueryAll, pelanggaranQueryAll, pembinaanQueryAll, nilaiKelasQuery
   ]);
 
   const absenRealtime = {
@@ -183,11 +194,31 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
       }
     });
   }
-  
+
   let totalBobot = 0;
   let allSikap = [];
-  if (resSikap.data) allSikap = allSikap.concat(resSikap.data);
-  if (resPelanggaran.data) allSikap = allSikap.concat(resPelanggaran.data);
+  // Perbaiki mapping kolom: catatan -> {jenis: 'Catatan Positif', detail: r.catatan}
+  if (resSikap.data) {
+    resSikap.data.forEach(r => {
+      allSikap.push({
+        tanggal: r.tanggal,
+        poin: r.poin,
+        jenis: 'Catatan Positif',
+        detail: r.catatan || '-'
+      });
+    });
+  }
+  // Perbaiki mapping kolom: pelanggaran -> {jenis: r.jenis, detail: r.perilaku}
+  if (resPelanggaran.data) {
+    resPelanggaran.data.forEach(r => {
+      allSikap.push({
+        tanggal: r.tanggal,
+        poin: r.poin,
+        jenis: r.jenis || 'Pelanggaran',
+        detail: r.perilaku || '-'
+      });
+    });
+  }
   
   allSikap.forEach(r => {
     if ((bulan === 'ALL' && tahun === 'ALL') || (r.tanggal >= startDate && r.tanggal <= endDate)) {
@@ -208,45 +239,72 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
     pembinaanFiltered.sort((a,b) => (a.tanggal < b.tanggal ? 1 : -1));
   }
 
+  // ============================================================
+  // ALGORITMA SILANG NILAI:
+  // 1. Kumpulkan semua penugasan unik di kelas (dari seluruh data kelas)
+  // 2. Cek apakah siswa ini punya nilai untuk setiap penugasan
+  // 3. Jika tidak ada atau bernilai 0/''/null, masuk ke nilaiBelumLengkap
+  // ============================================================
+  const allNilaiKelas = resNilai.data || [];
+  
+  // Kumpulkan penugasan unik kelas: { 'mapel||jenistugas||no': true }
+  const penugasanKelas = {};
+  allNilaiKelas.forEach(r => {
+    const key = `${r.matapelajaran}||${r.jenistugas}||${r.nopenilaian}`;
+    penugasanKelas[key] = true;
+  });
+  
+  // Nilai milik siswa ini saja
+  const nilaiSiswaMap = {};
+  allNilaiKelas.filter(r => String(r.nis) === String(nis)).forEach(r => {
+    const key = `${r.matapelajaran}||${r.jenistugas}||${r.nopenilaian}`;
+    nilaiSiswaMap[key] = r.nilai;
+  });
+  
+  // Bangun mapelNilaiMap khusus nilai milik siswa ini (untuk rekap)
   const mapelNilaiMap = {};
-  if (resNilai.data) {
-    resNilai.data.forEach(r => {
-      if ((bulan === 'ALL' && tahun === 'ALL') || (r.tanggal >= startDate && r.tanggal <= endDate) || !r.tanggal) {
-        if (!mapelNilaiMap[r.matapelajaran]) {
-          mapelNilaiMap[r.matapelajaran] = {};
-        }
-        mapelNilaiMap[r.matapelajaran][r.jenistugas + ' ' + r.nopenilaian] = r.nilai;
-      }
-    });
-  }
+  allNilaiKelas.filter(r => String(r.nis) === String(nis)).forEach(r => {
+    if (!mapelNilaiMap[r.matapelajaran]) mapelNilaiMap[r.matapelajaran] = {};
+    mapelNilaiMap[r.matapelajaran][r.jenistugas + ' ' + r.nopenilaian] = r.nilai;
+  });
   
   const formattedNilai = [];
   const nilaiBelumLengkap = [];
   
+  // Rekap nilai per mapel (dari nilai siswa sendiri)
   for (const mapel in mapelNilaiMap) {
     const vals = mapelNilaiMap[mapel];
     let sum = 0; let count = 0;
-    const missing = [];
-    
     for (const k in vals) {
-      if (vals[k] === null || vals[k] === 0 || vals[k] === '0' || vals[k] === '') {
-        missing.push(k);
-      } else {
-        sum += parseFloat(vals[k]) || 0;
+      const v = vals[k];
+      const kosong = v === null || v === undefined || v === '' || Number(v) === 0;
+      if (!kosong) {
+        sum += parseFloat(v) || 0;
         count++;
       }
     }
-    
     formattedNilai.push({
       mapel: mapel,
       nilai: vals,
-      rataRata: count > 0 ? (sum/count).toFixed(1) : 0
+      rataRata: count > 0 ? (sum/count).toFixed(1) : '-'
     });
-    
-    if (missing.length > 0) {
-      nilaiBelumLengkap.push({ mapel, missing });
+  }
+  
+  // Deteksi silang: penugasan kelas yang tidak ada atau kosong/0 untuk siswa ini
+  const missingPerMapel = {};
+  for (const key in penugasanKelas) {
+    const [mapel, jenis, noPen] = key.split('||');
+    const nilaiSiswa = nilaiSiswaMap[key];
+    const kosong = nilaiSiswa === null || nilaiSiswa === undefined || nilaiSiswa === '' || Number(nilaiSiswa) === 0;
+    if (kosong) {
+      if (!missingPerMapel[mapel]) missingPerMapel[mapel] = [];
+      missingPerMapel[mapel].push(`${jenis} ke-${noPen}`);
     }
   }
+  for (const mapel in missingPerMapel) {
+    nilaiBelumLengkap.push({ mapel, missing: missingPerMapel[mapel] });
+  }
+  nilaiBelumLengkap.sort((a, b) => a.mapel.localeCompare(b.mapel));
 
   let periodeStr = "Semua Waktu";
   if (bulan !== 'ALL' && tahun !== 'ALL') {
@@ -390,46 +448,6 @@ async function downloadLaporanOrtu() {
         <div style="text-align:right;">
           <div style="font-size:12px; color:#666;">Wali Kelas</div>
           <div style="font-weight:bold; color:#333;">${data.walas.nama}</div>
-        </div>
-      </div>
-      
-      <h4 style="margin:0 0 15px 0; color:#333;">Statistik Kehadiran (Sekolah)</h4>
-      <div class="form-grid" style="margin-bottom: 20px;">
-        <!-- Hari Ini -->
-        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-radius: 8px;">
-          <h5 style="margin:0 0 10px 0; color:#333; text-align:center; border-bottom:1px solid #ddd; padding-bottom:8px; font-size:14px;">Hari Ini</h5>
-          <div style="display:flex; justify-content:space-between; gap:2px;">
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Hadir</div><div style="font-size:16px; font-weight:bold; color:#43a047;">${absenR.hariIni.H || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Izin</div><div style="font-size:16px; font-weight:bold; color:#fbc02d;">${absenR.hariIni.I || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Sakit</div><div style="font-size:16px; font-weight:bold; color:#1e88e5;">${absenR.hariIni.S || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Cabut</div><div style="font-size:16px; font-weight:bold; color:#fb8c00;">${absenR.hariIni.C || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Telat</div><div style="font-size:16px; font-weight:bold; color:#8e24aa;">${absenR.hariIni.T || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Alpa</div><div style="font-size:16px; font-weight:bold; color:#e53935;">${absenR.hariIni.A || 0}</div></div>
-          </div>
-        </div>
-        <!-- Minggu Ini -->
-        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-radius: 8px;">
-          <h5 style="margin:0 0 10px 0; color:#333; text-align:center; border-bottom:1px solid #ddd; padding-bottom:8px; font-size:14px;">Minggu Ini</h5>
-          <div style="display:flex; justify-content:space-between; gap:2px;">
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Hadir</div><div style="font-size:16px; font-weight:bold; color:#43a047;">${absenR.mingguIni.H || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Izin</div><div style="font-size:16px; font-weight:bold; color:#fbc02d;">${absenR.mingguIni.I || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Sakit</div><div style="font-size:16px; font-weight:bold; color:#1e88e5;">${absenR.mingguIni.S || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Cabut</div><div style="font-size:16px; font-weight:bold; color:#fb8c00;">${absenR.mingguIni.C || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Telat</div><div style="font-size:16px; font-weight:bold; color:#8e24aa;">${absenR.mingguIni.T || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Alpa</div><div style="font-size:16px; font-weight:bold; color:#e53935;">${absenR.mingguIni.A || 0}</div></div>
-          </div>
-        </div>
-        <!-- Bulan Ini -->
-        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-radius: 8px;">
-          <h5 style="margin:0 0 10px 0; color:#333; text-align:center; border-bottom:1px solid #ddd; padding-bottom:8px; font-size:14px;">Bulan Ini</h5>
-          <div style="display:flex; justify-content:space-between; gap:2px;">
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Hadir</div><div style="font-size:16px; font-weight:bold; color:#43a047;">${absenR.bulanIni.H || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Izin</div><div style="font-size:16px; font-weight:bold; color:#fbc02d;">${absenR.bulanIni.I || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Sakit</div><div style="font-size:16px; font-weight:bold; color:#1e88e5;">${absenR.bulanIni.S || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Cabut</div><div style="font-size:16px; font-weight:bold; color:#fb8c00;">${absenR.bulanIni.C || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Telat</div><div style="font-size:16px; font-weight:bold; color:#8e24aa;">${absenR.bulanIni.T || 0}</div></div>
-            <div style="text-align:center;"><div style="font-size:11px; color:#666;">Alpa</div><div style="font-size:16px; font-weight:bold; color:#e53935;">${absenR.bulanIni.A || 0}</div></div>
-          </div>
         </div>
       </div>
       
@@ -598,3 +616,229 @@ async function downloadLaporanOrtu() {
       
       return html;
     }
+
+// ============================================================
+// ===== REALTIME SECTION (Auto-load, Tampil Sebelum Filter) ===
+// ============================================================
+
+async function loadOrtuRealtime() {
+  const profil = App.user.profil;
+  const nis = profil.nis;
+  const kelas = profil.kelas;
+  const container = document.getElementById('ortuRealtimeContainer');
+  if (!container) return;
+
+  try {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    // Hitung week start (Senin)
+    let d = new Date(today);
+    const dayOfWeek = d.getDay() || 7;
+    if (dayOfWeek !== 1) d.setHours(-24 * (dayOfWeek - 1));
+    const weekStartStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const monthStartStr = `${yyyy}-${mm}-01`;
+
+    // Fetch semua data sekaligus
+    const [resAbsenAll, resShalatHari, resSikapHari, resPelanggaranHari, resPembinaanHari, resNilaiKelasHari] = await Promise.all([
+      supaClient.from('absensi').select('tanggal, status').eq('nis', nis),
+      supaClient.from('shalat').select('tanggal, status, jumlah').eq('nis', nis).eq('tanggal', todayStr),
+      supaClient.from('catatan').select('tanggal, poin, catatan').eq('nis', nis).eq('tanggal', todayStr),
+      supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis).eq('tanggal', todayStr),
+      supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis).eq('tanggal', todayStr),
+      supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').eq('kelas', kelas).eq('tanggal', todayStr)
+    ]);
+
+    // Hitung absen realtime dari semua data absen
+    const stsMap = (s) => (['H','I','S','A','C','T'].includes(s) ? s : 'H');
+    const getPrio = (s) => ({C:6,A:5,S:4,I:3,T:2,H:1}[s] || 0);
+    const absenRealtime = {
+      hariIni:  {H:0,I:0,S:0,A:0,C:0,T:0},
+      mingguIni:{H:0,I:0,S:0,A:0,C:0,T:0},
+      bulanIni: {H:0,I:0,S:0,A:0,C:0,T:0}
+    };
+    const statusHarianAll = {};
+    (resAbsenAll.data || []).forEach(r => {
+      const s = stsMap(r.status);
+      const prev = statusHarianAll[r.tanggal];
+      if (!prev || getPrio(s) > getPrio(prev)) statusHarianAll[r.tanggal] = s;
+    });
+    for (const tgl in statusHarianAll) {
+      const s = statusHarianAll[tgl];
+      if (tgl === todayStr)     absenRealtime.hariIni[s]++;
+      if (tgl >= weekStartStr)  absenRealtime.mingguIni[s]++;
+      if (tgl >= monthStartStr) absenRealtime.bulanIni[s]++;
+    }
+
+    // Shalat hari ini
+    const shalatHari = resShalatHari.data || [];
+    const jumlahShalat = shalatHari.reduce((sum, r) => sum + (Number(r.jumlah) || 0), 0);
+    const statusShalatMap = { Y: 'Ya (Shalat)', T: 'Tidak Shalat', H: 'Halangan/Haid' };
+    const statusShalat = shalatHari.length > 0 ? (statusShalatMap[shalatHari[0].status] || shalatHari[0].status) : null;
+
+    // Sikap hari ini
+    const sikapHari = [
+      ...(resSikapHari.data || []).map(r => ({ poin: r.poin, jenis: 'Catatan Positif', detail: r.catatan || '-' })),
+      ...(resPelanggaranHari.data || []).map(r => ({ poin: r.poin, jenis: r.jenis || 'Pelanggaran', detail: r.perilaku || '-' }))
+    ];
+
+    // Pembinaan wali hari ini
+    const pembinaanHari = resPembinaanHari.data || [];
+
+    // Nilai hari ini — deteksi silang
+    const nilaiKelasHari = resNilaiKelasHari.data || [];
+    const penugasanHari = {};
+    nilaiKelasHari.forEach(r => {
+      const key = `${r.matapelajaran}||${r.jenistugas}||${r.nopenilaian}`;
+      penugasanHari[key] = true;
+    });
+    const nilaiSiswaHariMap = {};
+    nilaiKelasHari.filter(r => String(r.nis) === String(nis)).forEach(r => {
+      const key = `${r.matapelajaran}||${r.jenistugas}||${r.nopenilaian}`;
+      nilaiSiswaHariMap[key] = r.nilai;
+    });
+    const missingHariPerMapel = {};
+    for (const key in penugasanHari) {
+      const [mapel, jenis, noPen] = key.split('||');
+      const val = nilaiSiswaHariMap[key];
+      const kosong = val === null || val === undefined || val === '' || Number(val) === 0;
+      if (kosong) {
+        if (!missingHariPerMapel[mapel]) missingHariPerMapel[mapel] = [];
+        missingHariPerMapel[mapel].push(`${jenis} ke-${noPen}`);
+      }
+    }
+    const nilaiHariBelumLengkap = [];
+    for (const mapel in missingHariPerMapel) {
+      nilaiHariBelumLengkap.push({ mapel, missing: missingHariPerMapel[mapel] });
+    }
+    const adaNilaiHari = nilaiKelasHari.filter(r => String(r.nis) === String(nis)).length > 0;
+
+    container.innerHTML = buildOrtuRealtimeHTML({
+      todayStr, absenRealtime,
+      jumlahShalat, statusShalat, shalatAda: shalatHari.length > 0,
+      sikapHari, pembinaanHari,
+      adaNilaiHari, nilaiHariBelumLengkap
+    });
+  } catch(err) {
+    container.innerHTML = `<p style="color:#d32f2f; padding:15px; font-size:13px;">⚠️ Gagal memuat data realtime: ${err.message}</p>`;
+  }
+}
+
+function buildOrtuRealtimeHTML({ todayStr, absenRealtime, jumlahShalat, statusShalat, shalatAda, sikapHari, pembinaanHari, adaNilaiHari, nilaiHariBelumLengkap }) {
+  const ar = (stat, period) => (absenRealtime[period][stat] || 0);
+
+  const kartuAbsen = (label, period, borderColor) => `
+    <div class="form-section" style="padding:15px; margin-bottom:0; border:1px solid #ddd; border-top:3px solid ${borderColor}; border-radius:8px;">
+      <h5 style="margin:0 0 10px 0; color:#333; text-align:center; border-bottom:1px solid #eee; padding-bottom:8px; font-size:13px;">${label}</h5>
+      <div style="display:flex; justify-content:space-around; gap:4px; flex-wrap:wrap;">
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Hadir</div><div style="font-size:18px; font-weight:bold; color:#43a047;">${ar('H',period)}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Izin</div><div style="font-size:18px; font-weight:bold; color:#fbc02d;">${ar('I',period)}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Sakit</div><div style="font-size:18px; font-weight:bold; color:#1e88e5;">${ar('S',period)}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Cabut</div><div style="font-size:18px; font-weight:bold; color:#fb8c00;">${ar('C',period)}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Telat</div><div style="font-size:18px; font-weight:bold; color:#8e24aa;">${ar('T',period)}</div></div>
+        <div style="text-align:center;"><div style="font-size:10px; color:#666;">Alpa</div><div style="font-size:18px; font-weight:bold; color:#e53935;">${ar('A',period)}</div></div>
+      </div>
+    </div>`;
+
+  // Shalat
+  let shalatHTML;
+  if (!shalatAda) {
+    shalatHTML = `<p style="color:#999; font-size:12px; margin:0;">Belum ada data shalat hari ini.</p>`;
+  } else {
+    const sColor = statusShalat && statusShalat.startsWith('Ya') ? '#2e7d32' : statusShalat && statusShalat.startsWith('H') ? '#00897b' : '#d32f2f';
+    shalatHTML = `
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div style="background:#f3e5f5; padding:8px 14px; border-radius:8px; text-align:center;">
+          <div style="font-size:10px; color:#7b1fa2;">Jumlah Shalat</div>
+          <div style="font-size:20px; font-weight:bold; color:#7b1fa2;">${jumlahShalat}</div>
+        </div>
+        <div style="background:#e8f5e9; padding:8px 14px; border-radius:8px; flex:1; display:flex; align-items:center;">
+          <span style="font-size:13px; font-weight:bold; color:${sColor};">${statusShalat}</span>
+        </div>
+      </div>`;
+  }
+
+  // Sikap
+  let sikapHTML;
+  if (sikapHari.length === 0) {
+    sikapHTML = `<p style="color:#999; font-size:12px; margin:0;">Tidak ada catatan sikap hari ini.</p>`;
+  } else {
+    sikapHTML = sikapHari.map(s => {
+      const isPelanggaran = !String(s.jenis).toLowerCase().includes('positif');
+      const bg = isPelanggaran ? '#ffebee' : '#e8f5e9';
+      const col = isPelanggaran ? '#d32f2f' : '#2e7d32';
+      return `<div style="background:${bg}; padding:6px 10px; border-radius:6px; margin-bottom:4px; font-size:12px;">
+        <span style="font-weight:bold; color:${col};">${s.jenis}</span>: ${s.detail} <span style="color:${col}; font-size:11px;">(${s.poin > 0 ? '+' : ''}${s.poin})</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Pembinaan
+  let pembinaanHTML;
+  if (pembinaanHari.length === 0) {
+    pembinaanHTML = `<p style="color:#999; font-size:12px; margin:0;">Tidak ada pembinaan wali hari ini.</p>`;
+  } else {
+    pembinaanHTML = pembinaanHari.map(w => `
+      <div style="background:#e3f2fd; padding:8px 10px; border-radius:6px; margin-bottom:4px; font-size:12px;">
+        <b style="color:#1565c0;">${w.topik || '-'}</b><br>
+        <span style="color:#555;">Masalah: ${w.masalah || '-'}</span><br>
+        <span style="color:#555;">Nasihat: ${w.isi || '-'}</span>
+      </div>`).join('');
+  }
+
+  // Nilai hari ini
+  let nilaiHariHTML;
+  if (!adaNilaiHari && nilaiHariBelumLengkap.length === 0) {
+    nilaiHariHTML = `<p style="color:#999; font-size:12px; margin:0;">Belum ada penilaian hari ini.</p>`;
+  } else if (nilaiHariBelumLengkap.length > 0) {
+    const listMissing = nilaiHariBelumLengkap.map(item =>
+      `<li style="margin-bottom:3px;"><b>${item.mapel}</b>: ${item.missing.join(', ')}</li>`
+    ).join('');
+    nilaiHariHTML = `
+      <div style="background:#fff3e0; border:1px solid #ffb74d; padding:8px 10px; border-radius:6px; font-size:12px;">
+        <b style="color:#e65100;">⚠️ Nilai belum lengkap hari ini:</b>
+        <ul style="margin:5px 0 0 0; padding-left:18px; color:#e65100;">${listMissing}</ul>
+      </div>`;
+  } else {
+    nilaiHariHTML = `<p style="color:#2e7d32; font-size:12px; font-weight:bold; margin:0;">✅ Semua nilai hari ini sudah lengkap.</p>`;
+  }
+
+  return `
+  <div style="background:#fff; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.06); padding:20px; margin-bottom:12px;">
+    <h4 style="margin:0 0 15px 0; color:#1565c0; border-bottom:2px solid #e3f2fd; padding-bottom:10px; font-size:15px;">
+      📊 Statistik Kehadiran Sekolah <span style="font-size:11px; color:#888; font-weight:normal;">(Otomatis · Realtime)</span>
+    </h4>
+    <div class="form-grid" style="margin-bottom:0;">
+      ${kartuAbsen('Hari Ini', 'hariIni', '#43a047')}
+      ${kartuAbsen('Minggu Ini', 'mingguIni', '#1e88e5')}
+      ${kartuAbsen('Bulan Ini', 'bulanIni', '#8e24aa')}
+    </div>
+  </div>
+
+  <div style="background:#fff; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.06); padding:20px; margin-bottom:4px;">
+    <h4 style="margin:0 0 15px 0; color:#e65100; border-bottom:2px solid #fff3e0; padding-bottom:10px; font-size:15px;">
+      🗓️ Ringkasan Hari Ini <span style="font-size:11px; color:#888; font-weight:normal;">(${todayStr})</span>
+    </h4>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px;">
+      <div style="border:1px solid #e1bee7; border-top:3px solid #7b1fa2; border-radius:8px; padding:12px;">
+        <div style="font-weight:bold; color:#7b1fa2; font-size:13px; margin-bottom:8px;">🕌 Shalat</div>
+        ${shalatHTML}
+      </div>
+      <div style="border:1px solid #c8e6c9; border-top:3px solid #43a047; border-radius:8px; padding:12px;">
+        <div style="font-weight:bold; color:#2e7d32; font-size:13px; margin-bottom:8px;">📝 Catatan Sikap</div>
+        ${sikapHTML}
+      </div>
+      <div style="border:1px solid #bbdefb; border-top:3px solid #1565c0; border-radius:8px; padding:12px;">
+        <div style="font-weight:bold; color:#1565c0; font-size:13px; margin-bottom:8px;">👨‍🏫 Pembinaan Wali</div>
+        ${pembinaanHTML}
+      </div>
+      <div style="border:1px solid #ffe0b2; border-top:3px solid #fb8c00; border-radius:8px; padding:12px;">
+        <div style="font-weight:bold; color:#e65100; font-size:13px; margin-bottom:8px;">📊 Nilai Hari Ini</div>
+        ${nilaiHariHTML}
+      </div>
+    </div>
+  </div>`;
+}
