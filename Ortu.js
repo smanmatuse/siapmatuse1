@@ -213,7 +213,8 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
     resPelanggaran.data.forEach(r => {
       allSikap.push({
         tanggal: r.tanggal,
-        poin: r.poin,
+        // Poin pelanggaran dijadikan negatif agar totalBobot = positif - negatif
+        poin: -(Math.abs(r.poin || 0)),
         jenis: r.jenis || 'Pelanggaran',
         detail: r.perilaku || '-'
       });
@@ -489,10 +490,11 @@ async function downloadLaporanOrtu() {
       </div>
       `;
       
-      let totalBobotColor = totalBobot >= 0 ? '#2e7d32' : '#c62828';
-      let totalBobotBg = totalBobot >= 0 ? '#e8f5e9' : '#ffebee';
-      let totalBobotBorder = totalBobot >= 0 ? '#43a047' : '#d32f2f';
-      let totalBobotText = totalBobot > 0 ? '+' + totalBobot : totalBobot;
+      // Warna total bobot: positif = hijau, 0 atau negatif = merah, tanpa tanda '+'
+      let totalBobotColor = totalBobot > 0 ? '#2e7d32' : '#c62828';
+      let totalBobotBg    = totalBobot > 0 ? '#e8f5e9' : '#ffebee';
+      let totalBobotBorder= totalBobot > 0 ? '#43a047' : '#d32f2f';
+      let totalBobotText  = totalBobot; // tidak ada tanda '+' untuk positif
 
       html += `
       <div style="display:flex; justify-content:space-between; align-items:center; margin: 0 0 10px 0;">
@@ -518,7 +520,7 @@ async function downloadLaporanOrtu() {
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
                 <div style="font-weight:bold; font-size:13px; color:${colorClass};">${s.jenis}</div>
                 <div style="font-weight:bold; font-size:12px; color:${colorClass}; background:${bgClass}; padding:2px 6px; border-radius:4px;">
-                  Bobot: ${s.poin > 0 ? '+' + s.poin : s.poin}
+                  Bobot: ${s.poin}
                 </div>
               </div>
               <div style="font-size:13px; color:#555; line-height:1.4;">${s.detail}</div>
