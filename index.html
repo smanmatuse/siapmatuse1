@@ -1709,9 +1709,9 @@
           email: App.user.username,
           nama: App.user.nama,
           role: App.user.role,
-          // Karena di database sekarang digabung jadi satu kolom kelas_yang_diajar
-          kelasReguler: arrKelas,
-          kelasMC: [],
+          // Pisahkan kelas reguler vs MC berdasarkan konstanta KELAS_REGULER
+          kelasReguler: arrKelas.filter(k => KELAS_REGULER.includes(k)),
+          kelasMC: arrKelas.filter(k => !KELAS_REGULER.includes(k)),
           mapelList: App.user.profil.mapel ? App.user.profil.mapel.split(',').map(s => s.trim()).filter(s => s && s !== '-') : [],
           waliKelas: App.user.profil.wali_kelas !== '-' ? App.user.profil.wali_kelas : null
         };
@@ -5412,8 +5412,7 @@
         const hasil = [];
         for (const kelas in guruInput) {
            let semuaSiswa = [];
-           const isMC = (App.guruData && App.guruData.kelasMC && App.guruData.kelasMC.includes(kelas)) ||
-                        (App.config && App.config.kelasMC && App.config.kelasMC.includes(kelas));
+           const isMC = !KELAS_REGULER.includes(kelas);
            if (isMC) {
              const { data, error } = await supaClient.from('pilihan_moving_class').select('nis, nama, mapel_moving');
              if (!error && data) semuaSiswa = data.filter(s => s.mapel_moving && s.mapel_moving.split(',').map(m => m.trim()).includes(kelas));
@@ -5458,8 +5457,7 @@
       showLoading(true);
       try {
         let siswaData = [];
-        const isMC = (App.guruData && App.guruData.kelasMC && App.guruData.kelasMC.includes(kelas)) ||
-                     (App.config && App.config.kelasMC && App.config.kelasMC.includes(kelas));
+        const isMC = !KELAS_REGULER.includes(kelas);
         if (isMC) {
           const { data, error } = await supaClient.from('pilihan_moving_class').select('nis, nama, mapel_moving').order('nama', { ascending: true });
           if (error) throw error;
