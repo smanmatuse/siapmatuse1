@@ -3955,26 +3955,34 @@
 
 
 
-    function loadSiswaFilterLap() {
+    async function loadSiswaFilterLap() {
       const kelas = document.getElementById('lapSiswaKelas').value;
       if (!kelas) return;
       showLoading(true);
-      google.script.run
-        .withSuccessHandler(function (r) {
-          showLoading(false);
-          if (r.success) {
-            let options = '<option value="">-- Pilih Siswa --</option>';
-            options += '<option value="semua">Semua Siswa</option>';
-            r.siswa.forEach(s => options += `<option value="${s.nis}">${s.nama}</option>`);
-            document.getElementById('lapSiswaList').innerHTML = options;
-          }
-        })
-        .withFailureHandler(function (e) {
-          showLoading(false);
-          showError('Gagal memuat siswa: ' + e);
-        })
-        .getSiswaByKelas(kelas);
+      try {
+        const isMC = !KELAS_REGULER.includes(kelas);
+        let siswaData = [];
+        if (isMC) {
+          const { data, error } = await supaClient.from('pilihan_moving_class').select('nis, nama, mapel_moving');
+          if (error) throw error;
+          siswaData = (data || []).filter(s => s.mapel_moving && s.mapel_moving.split(',').map(m => m.trim()).includes(kelas));
+          siswaData.sort((a, b) => a.nama.localeCompare(b.nama));
+        } else {
+          const { data, error } = await supaClient.from('data_siswa').select('nis, nama').eq('kelas', kelas).order('nama', { ascending: true });
+          if (error) throw error;
+          siswaData = data || [];
+        }
+        let options = '<option value="">-- Pilih Siswa --</option>';
+        options += '<option value="semua">Semua Siswa</option>';
+        siswaData.forEach(s => options += `<option value="${s.nis}">${s.nama}</option>`);
+        document.getElementById('lapSiswaList').innerHTML = options;
+      } catch (e) {
+        showError('Gagal memuat siswa: ' + e.message);
+      } finally {
+        showLoading(false);
+      }
     }
+
 
 
     function previewLaporanSiswa() {
