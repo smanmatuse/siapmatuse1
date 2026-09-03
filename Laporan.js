@@ -318,21 +318,37 @@ async function downloadLaporanBulanan() {
     const bulanNum = bulan === 'ALL' ? 'ALL' : parseInt(bulan, 10);
     const tahunNum = tahun === 'ALL' ? 'ALL' : parseInt(tahun, 10);
 
+    // Hitung range tanggal untuk filter query ke Supabase
+    let qStartDate = null;
+    let qEndDate = null;
+    if (tahunNum !== 'ALL') {
+      if (bulanNum !== 'ALL') {
+        // Bulan & tahun spesifik
+        qStartDate = `${tahunNum}-${String(bulanNum).padStart(2,'0')}-01`;
+        const lastDay = new Date(tahunNum, bulanNum, 0).getDate();
+        qEndDate = `${tahunNum}-${String(bulanNum).padStart(2,'0')}-${lastDay}`;
+      } else {
+        // Hanya tahun
+        qStartDate = `${tahunNum}-01-01`;
+        qEndDate = `${tahunNum}-12-31`;
+      }
+    }
+
     // 2. Ambil absensi
     // Untuk kelas reguler: ambil semua absensi berdasarkan NIS siswa (termasuk absensi dari mapel pilihan)
     // Untuk kelas MC: filter ketat berdasarkan kelas
     let absenData = [];
     if (isMC) {
-      let { data, error: errAbsen } = await supaClient.from('absensi')
-        .select('*')
-        .eq('kelas', kelas);
+      let q = supaClient.from('absensi').select('*').eq('kelas', kelas);
+      if (qStartDate) q = q.gte('tanggal', qStartDate).lte('tanggal', qEndDate);
+      let { data, error: errAbsen } = await q;
       if (errAbsen) throw errAbsen;
       absenData = data || [];
     } else {
       const nisList = siswaData.map(s => s.nis);
-      let { data, error: errAbsen } = await supaClient.from('absensi')
-        .select('*')
-        .in('nis', nisList);
+      let q = supaClient.from('absensi').select('*').in('nis', nisList);
+      if (qStartDate) q = q.gte('tanggal', qStartDate).lte('tanggal', qEndDate);
+      let { data, error: errAbsen } = await q;
       if (errAbsen) throw errAbsen;
       absenData = data || [];
     }
