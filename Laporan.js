@@ -7,6 +7,22 @@ function getPrioritasStatus(status) {
   return urutan[status] !== undefined ? urutan[status] : -1;
 }
 
+// ================= HELPER: FETCH ALL PAGES (atasi batas 1000 baris Supabase) =================
+// Mengambil data secara bertahap (chunk 1000 baris) sampai semua data terbaca.
+async function fetchAllPages(baseQuery) {
+  const PAGE_SIZE = 1000;
+  let allData = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    allData = allData.concat(data || []);
+    if (!data || data.length < PAGE_SIZE) break; // sudah habis
+    from += PAGE_SIZE;
+  }
+  return allData;
+}
+
 const KOP_SURAT_LAPORAN = `
   <div style="text-align:center; margin-bottom:20px;">
     <img src="https://i.ibb.co.com/q3stPtZF/KOP.png" 
@@ -339,18 +355,17 @@ async function downloadLaporanBulanan() {
     // Untuk kelas MC: filter ketat berdasarkan kelas
     let absenData = [];
     if (isMC) {
+      // Gunakan paginasi agar semua data terambil (tidak terpotong di 1000 baris)
       let q = supaClient.from('absensi').select('*').eq('kelas', kelas);
       if (qStartDate) q = q.gte('tanggal', qStartDate).lte('tanggal', qEndDate);
-      let { data, error: errAbsen } = await q;
-      if (errAbsen) throw errAbsen;
-      absenData = data || [];
+      absenData = await fetchAllPages(q);
     } else {
+      // Kelas reguler: ambil berdasarkan NIS (termasuk absensi mapel pilihan XI & XII)
+      // Gunakan paginasi agar semua mapel semua siswa terbaca
       const nisList = siswaData.map(s => s.nis);
       let q = supaClient.from('absensi').select('*').in('nis', nisList);
       if (qStartDate) q = q.gte('tanggal', qStartDate).lte('tanggal', qEndDate);
-      let { data, error: errAbsen } = await q;
-      if (errAbsen) throw errAbsen;
-      absenData = data || [];
+      absenData = await fetchAllPages(q);
     }
 
     // Group statusHarian dan statusJam by month
