@@ -167,3 +167,157 @@ function loadPiketJam() {
         document.getElementById('absenJam').value = "";
     }
 }
+
+// ============================================================
+// ========= ABSENSI UPACARA (Senin, Jam 1) ===================
+// ============================================================
+function renderAbsensiUpacara() {
+  _renderAbsensiAcaraPiket('UPACARA', 'upacara', '🎌', 'ABSENSI UPACARA', 'Senin');
+}
+
+// ============================================================
+// ========= ABSENSI MUHADHARAH (Jumat, Jam 1) ================
+// ============================================================
+function renderAbsensiMuhadharah() {
+  _renderAbsensiAcaraPiket('MUHADHARAH', 'muhadharah', '🎤', 'ABSENSI MUHADHARAH', 'Jumat');
+}
+
+// ----- Helper internal: render form absensi acara piket -----
+function _renderAbsensiAcaraPiket(namaMapel, containerId, ikon, judul, hariLabel) {
+  const kelasOpts = KELAS_REGULER.map(k => `<option value="${k}">${k}</option>`).join('');
+  document.getElementById(containerId).innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:20px;border:1px solid #e0e0e0;">
+      <h3 style="margin-top:0;margin-bottom:6px;color:#1b5e20;display:flex;align-items:center;gap:8px;">
+        <span>${ikon}</span> ${judul}
+      </h3>
+      <p style="font-size:13px;color:#777;margin-bottom:15px;">
+        Absensi <b>${namaMapel}</b> akan disimpan sebagai <b>Jam 1 / ${hariLabel}</b> pada kelas yang dipilih.
+      </p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Kelas</label>
+          <select id="${containerId}Kelas" class="form-control"
+            onchange="document.getElementById('${containerId}Container').style.display='none'">
+            <option value="">-- Pilih Kelas --</option>
+            ${kelasOpts}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tanggal</label>
+          <input type="date" id="${containerId}Tanggal" class="form-control"
+            value="${new Date().toISOString().split('T')[0]}"
+            onchange="document.getElementById('${containerId}Container').style.display='none'">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;">
+          <button class="btn btn-primary" style="width:100%;padding:10px;"
+            onclick="_muatSiswaAcara('${containerId}','${namaMapel}')">
+            📋 Muat Siswa
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="${containerId}Container" style="display:none;background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;margin-bottom:20px;">
+          <thead>
+            <tr>
+              <th width="40">No</th>
+              <th width="100">NIS</th>
+              <th>Nama Siswa</th>
+              <th width="280">Status Kehadiran</th>
+            </tr>
+          </thead>
+          <tbody id="${containerId}Tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-success" style="width:100%;padding:12px;font-size:16px;"
+        onclick="_simpanAbsensiAcara('${containerId}','${namaMapel}')">
+        💾 Simpan Absensi ${namaMapel}
+      </button>
+    </div>
+  `;
+}
+
+// Muat daftar siswa untuk form absensi acara
+async function _muatSiswaAcara(containerId, namaMapel) {
+  const kelas   = document.getElementById(`${containerId}Kelas`).value;
+  const tanggal = document.getElementById(`${containerId}Tanggal`).value;
+  if (!kelas || !tanggal) { showError('Pilih kelas dan tanggal terlebih dahulu!'); return; }
+
+  showLoading(true, `Memuat siswa kelas ${kelas}...`);
+  try {
+    const { data: siswa, error } = await supaClient
+      .from('data_siswa').select('nis, nama')
+      .eq('kelas', kelas).order('nama', { ascending: true });
+    if (error) throw error;
+    if (!siswa || siswa.length === 0) { showLoading(false); showError('Tidak ada siswa di kelas ini.'); return; }
+
+    // Pre-fill jika sudah pernah diisi hari ini
+    const { data: existing } = await supaClient.from('absensi').select('nis, status')
+      .eq('kelas', kelas).eq('tanggal', tanggal).eq('mapel', namaMapel).eq('jam', '1');
+    const existingMap = {};
+    if (existing) existing.forEach(d => existingMap[d.nis] = d.status);
+
+    let html = '';
+    siswa.forEach((s, i) => {
+      const prev = existingMap[s.nis] || 'H';
+      const radioOpts = ['H','S','I','A','T','C'].map(st => `
+        <div class="radio-item">
+          <input type="radio" name="acara_st_${s.nis}" value="${st}"
+            onchange="setStatus('${s.nis}','${st}')" ${prev === st ? 'checked' : ''}>
+          <span class="radio-label ${st.toLowerCase()}">${st}</span>
+        </div>`).join('');
+      html += `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${s.nis}</td>
+          <td style="text-align:left;white-space:normal;word-wrap:break-word;">${s.nama}</td>
+          <td>
+            <div class="radio-group">${radioOpts}</div>
+            <input type="hidden" id="st_${s.nis}" value="${prev}">
+          </td>
+        </tr>`;
+    });
+
+    document.getElementById(`${containerId}Tbody`).innerHTML = html;
+    document.getElementById(`${containerId}Container`).style.display = 'block';
+  } catch (err) {
+    showError('Gagal memuat siswa: ' + err.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+// Simpan absensi acara (Upacara / Muhadharah)
+async function _simpanAbsensiAcara(containerId, namaMapel) {
+  const kelas   = document.getElementById(`${containerId}Kelas`).value;
+  const tanggal = document.getElementById(`${containerId}Tanggal`).value;
+  if (!kelas || !tanggal) { showError('Kelas dan tanggal harus diisi!'); return; }
+
+  const rows = document.querySelectorAll(`#${containerId}Tbody tr`);
+  if (rows.length === 0) { showError('Muat siswa terlebih dahulu!'); return; }
+
+  const dataAbsen = [];
+  rows.forEach(row => {
+    const nis    = row.children[1].textContent.trim();
+    const nama   = row.children[2].textContent.trim();
+    const status = document.getElementById(`st_${nis}`)?.value || 'H';
+    dataAbsen.push({ nis, nama, kelas, mapel: namaMapel, tanggal, jam: '1', status, username_guru: 'piket' });
+  });
+
+  confirmAction(`Simpan ${dataAbsen.length} data absensi ${namaMapel}?`, async function () {
+    showLoading(true, 'Menyimpan...');
+    try {
+      const { error } = await supaClient.from('absensi')
+        .upsert(dataAbsen, { onConflict: 'nis,tanggal,mapel,jam' });
+      if (error) throw error;
+      showLoading(false);
+      showSuccess(`${dataAbsen.length} data absensi ${namaMapel} berhasil disimpan!`);
+      document.getElementById(`${containerId}Container`).style.display = 'none';
+    } catch (err) {
+      showLoading(false);
+      showError('Gagal menyimpan: ' + err.message);
+    }
+  });
+}
