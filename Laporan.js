@@ -2222,9 +2222,9 @@ function generateHtmlLaporanSiswa(result) {
       mapelList.forEach((mapel, i) => {
         const nData = item.nilai[mapel];
         const avg = (arr) => arr && arr.length > 0 ? (arr.reduce((a,b)=>a+b,0) / arr.length).toFixed(1) : '-';
-        nilaiRows += `<tr><td style="text-align:center;">${i+1}</td><td>${mapel}</td><td style="text-align:center;">${avg(nData['TG'])}</td><td style="text-align:center;">${avg(nData['UH'])}</td><td style="text-align:center;">${avg(nData['MID'])}</td><td style="text-align:center;">${avg(nData['SM'])}</td></tr>`;
+        nilaiRows += `<tr><td style="text-align:center;">${i+1}</td><td>${mapel}</td><td style="text-align:center;">${avg(nData['PH'])}</td><td style="text-align:center;">${avg(nData['TG'])}</td><td style="text-align:center;">${avg(nData['PR'])}</td><td style="text-align:center;">${avg(nData['UTS'])}</td><td style="text-align:center;">${avg(nData['UAS'])}</td></tr>`;
       });
-      nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><thead><tr><th rowspan="2" style="width:30px;">No</th><th rowspan="2">Mata Pelajaran</th><th colspan="4">Rata-rata Nilai Berdasarkan Jenis Tugas</th></tr><tr><th style="width:50px;">TG</th><th style="width:50px;">UH</th><th style="width:50px;">MID</th><th style="width:50px;">SM</th></tr></thead><tbody>${nilaiRows}</tbody></table>`;
+      nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><thead><tr><th rowspan="2" style="width:30px;">No</th><th rowspan="2">Mata Pelajaran</th><th colspan="5">Rata-rata Nilai Berdasarkan Jenis Tugas</th></tr><tr><th style="width:50px;">PH</th><th style="width:50px;">TG</th><th style="width:50px;">PR</th><th style="width:50px;">UTS</th><th style="width:50px;">UAS</th></tr></thead><tbody>${nilaiRows}</tbody></table>`;
     } else { nilaiHtml = `<div class="section-title">D. Rekapitulasi Nilai Akademik</div><table class="data"><tr><td style="text-align:center;font-style:italic;">Belum ada nilai yang diinput</td></tr></table>`; }
 
     // Tabel peringatan Nilai Belum Lengkap
