@@ -5664,7 +5664,9 @@
         return;
       }
       
-      const dataToSave = [];
+      const dataToUpdate = [];
+      const dataToInsert = [];
+      
       App.pesertaData.forEach(s => {
         const val = document.getElementById(`input_nilai_${s.nis}`).value;
         if (val !== '') {
@@ -5674,19 +5676,33 @@
           const payload = { kelas, matapelajaran: mapel, nis: s.nis, nama: s.nama, jenistugas: jenis, nopenilaian: noPenilaian, nilai: parseFloat(val), username_guru: App.user.username };
           
           if (tanggalData) payload.tanggal = tanggalData;
-          if (existingId) payload.id = existingId;
           
-          dataToSave.push(payload);
+          if (existingId) {
+            payload.id = existingId;
+            dataToUpdate.push(payload);
+          } else {
+            if (!payload.tanggal) payload.tanggal = new Date().toISOString();
+            dataToInsert.push(payload);
+          }
         }
       });
-      if (dataToSave.length === 0) { showCustomAlert('Tidak ada nilai yang diisi!', 'error'); return; }
+      
+      const totalData = dataToUpdate.length + dataToInsert.length;
+      if (totalData === 0) { showCustomAlert('Tidak ada nilai yang diisi!', 'error'); return; }
       const aksiLabel = mode === 'edit' ? 'memperbarui' : 'menyimpan';
-      const pesan = `Yakin ${aksiLabel} <b>Penilaian ke-${noPenilaian}</b>?<br><br>Jenis: <b>${jenis}</b> | Kelas: <b>${kelas}</b><br>Mapel: <b>${mapel}</b><br>Jumlah siswa dinilai: <b>${dataToSave.length} orang</b>`;
+      const pesan = `Yakin ${aksiLabel} <b>Penilaian ke-${noPenilaian}</b>?<br><br>Jenis: <b>${jenis}</b> | Kelas: <b>${kelas}</b><br>Mapel: <b>${mapel}</b><br>Jumlah siswa dinilai: <b>${totalData} orang</b>`;
       showCustomConfirm(pesan, async function() {
         toggleButtonLoading('#nilaiSimpanBtn', true, '⏳ Menyimpan...');
         try {
-          const { error: insErr } = await supaClient.from('nilai').upsert(dataToSave);
-          if (insErr) throw insErr;
+          const promises = [];
+          if (dataToUpdate.length > 0) promises.push(supaClient.from('nilai').upsert(dataToUpdate));
+          if (dataToInsert.length > 0) promises.push(supaClient.from('nilai').insert(dataToInsert));
+          
+          const results = await Promise.all(promises);
+          for (let res of results) {
+            if (res.error) throw res.error;
+          }
+          
           toggleButtonLoading('#nilaiSimpanBtn', false);
           showCustomAlert(`Berhasil ${aksiLabel} data penilaian`, 'success');
           loadSiswaNilai();
