@@ -1,4 +1,5 @@
-<!-- SIAP v2.1 | Build: 2026-08-08 | Migrasi Catatan & Pelanggaran ke Supabase -->
+<!-- SIAP v2.2 | Build: 2026-09-05 | Fix: Laporan Per Siswa (nilai, catatan wali, shalat) + Fix Laporan Bulanan (paginasi) -->
+
 <!DOCTYPE html>
 <html>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1341,6 +1342,8 @@
         <div id="beranda" class="menu-content" style="display:none;"></div>
         <div id="piket_beranda" class="menu-content" style="display:none;"></div>
         <div id="absensi" class="menu-content" style="display:none;"></div>
+        <div id="upacara" class="menu-content" style="display:none;"></div>
+        <div id="muhadharah" class="menu-content" style="display:none;"></div>
         <div id="ekskul" class="menu-content" style="display:none;"></div>
         <div id="catatan" class="menu-content" style="display:none;"></div>
         <div id="pelanggaran" class="menu-content" style="display:none;"></div>
@@ -1784,7 +1787,9 @@
       if (App.user.username === 'piket') {
         navItems = [
           { id: 'piket_beranda', label: '🏠', text: 'BERANDA PIKET' },
-          { id: 'absensi', label: '📋', text: 'ABSENSI PIKET' }
+          { id: 'absensi',       label: '📋', text: 'ABSENSI PIKET'       },
+          { id: 'upacara',       label: '🎌', text: 'ABSENSI UPACARA'     },
+          { id: 'muhadharah',    label: '🎤', text: 'ABSENSI MUHADHARAH'  }
         ];
       } else if (roleLower === 'guru') {
         navItems = [
@@ -1881,7 +1886,11 @@
       } else if (menuId === 'laporan') {
         renderLaporan();
       } else if (menuId === 'piket_beranda') {
-        if (typeof renderPiketBeranda === 'function') renderPiketBeranda();
+        if (typeof renderPiketBeranda   === 'function') renderPiketBeranda();
+      } else if (menuId === 'upacara') {
+        if (typeof renderAbsensiUpacara === 'function') renderAbsensiUpacara();
+      } else if (menuId === 'muhadharah') {
+        if (typeof renderAbsensiMuhadharah === 'function') renderAbsensiMuhadharah();
       } else if (menuId === 'pimpinan_beranda') {
         renderPimpinanBeranda();
       } else if (menuId === 'pimpinan_kehadiran') {
@@ -2347,8 +2356,14 @@
 
     function displaySiswa(siswa, dataShalat) {
       const jam = document.getElementById('absenJam').value;
-      const showShalatSt = jam === '7' ? 'table-cell' : 'none';
-      const showShalatJml = jam === '1' ? 'table-cell' : 'none';
+      const tanggal = document.getElementById('absenTanggal').value || new Date().toISOString().split('T')[0];
+      const _day = new Date(tanggal + 'T00:00:00').getDay(); // 0=Min, 1=Sen, ..., 5=Jum
+      const _isSenin_Jumat = _day === 1 || _day === 5;
+
+      // Senin/Jumat: shalat (status + jumlah) diisi sekaligus di jam 2
+      // Hari lain: jumlah di jam 1, status di jam 7 (logika lama)
+      const showShalatSt  = _isSenin_Jumat ? (jam === '2' ? 'table-cell' : 'none') : (jam === '7' ? 'table-cell' : 'none');
+      const showShalatJml = _isSenin_Jumat ? (jam === '2' ? 'table-cell' : 'none') : (jam === '1' ? 'table-cell' : 'none');
 
       // Tampilkan/sembunyikan header kolom shalat
       const thSt = document.getElementById('thAbsenShalatSt');
@@ -2497,19 +2512,23 @@
         dataAbsen.push({ nis, nama, status });
 
         // Shalat — opsional
-        let shalatSt  = document.getElementById(`shalat_st_${nis}`)?.value || '';
+        let shalatSt       = document.getElementById(`shalat_st_${nis}`)?.value || '';
         const shalatJmlRaw = document.getElementById(`shalat_jml_${nis}`)?.value;
         let shalatJml = 0;
-        
-        if (jam === '1' && shalatJmlRaw === 'H') {
-          shalatSt = 'H';
-          shalatJml = 0;
+
+        // Deteksi hari untuk menentukan jam shalat
+        const _sd = new Date(tanggal + 'T00:00:00').getDay();
+        const _isSJ = _sd === 1 || _sd === 5; // Senin atau Jumat
+        const _shalatJams = _isSJ ? ['2'] : ['1', '7'];
+
+        if (shalatJmlRaw === 'H') {
+          shalatSt = 'H'; shalatJml = 0;
         } else if (shalatJmlRaw && shalatJmlRaw !== '') {
           shalatJml = parseInt(shalatJmlRaw) || 0;
         }
-        
-        // Kumpulkan data shalat khusus di jam 1 atau 7 (biarpun kosong/0)
-        if (jam === '1' || jam === '7') {
+
+        // Kumpulkan data shalat hanya di jam yang sesuai
+        if (_shalatJams.includes(jam)) {
           dataShalat.push({
             nis, nama, kelas,
             tanggal: tanggal,
@@ -2535,24 +2554,26 @@
 
           
           
-          // HANYA proses simpan shalat jika Jam 1 atau 7
-          if (jam === '1' || jam === '7') {
+          // Proses simpan shalat sesuai jam yang berlaku
+          const _ssd = new Date(tanggal + 'T00:00:00').getDay();
+          const _isSaveSJ = _ssd === 1 || _ssd === 5; // Senin atau Jumat
+          const _saveJams = _isSaveSJ ? ['2'] : ['1', '7'];
+
+          if (_saveJams.includes(jam)) {
             if (dataShalat.length > 0) {
-              // Ambil data shalat yang sudah ada di database (agar input jam 7 tidak menghapus jumlah dari jam 1)
+              // Ambil data shalat yang sudah ada (agar tidak saling menimpa)
               const { data: existingShalat } = await supaClient.from('shalat').select('*').eq('kelas', kelas).eq('tanggal', tanggal);
               const existingMap = {};
-              if (existingShalat) {
-                existingShalat.forEach(sh => existingMap[sh.nis] = sh);
-              }
+              if (existingShalat) existingShalat.forEach(sh => existingMap[sh.nis] = sh);
 
               const mergedShalat = dataShalat.map(newSh => {
                 const oldSh = existingMap[newSh.nis];
-                if (oldSh) {
-                  // Di Jam 1, biarkan jumlah dari form (walau 0), tapi amankan status dari DB
+                if (oldSh && !_isSaveSJ) {
+                  // Hari biasa: jam 1 → preserve status dari DB; jam 7 → preserve jumlah dari DB
                   if (jam === '1') newSh.status = oldSh.status;
-                  // Di Jam 7, biarkan status dari form, tapi amankan jumlah dari DB
-                  if (jam === '7') newSh.jumlah = oldSh.jumlah;
+                  if (jam === '7') newSh.jumlah  = oldSh.jumlah;
                 }
+                // Senin/Jumat jam 2: isi status + jumlah sekaligus, tidak perlu merge
                 return newSh;
               });
 
@@ -2564,7 +2585,10 @@
   
 
           toggleButtonLoading('button[onclick="simpanAbsensi()"]', false);
-          const shalatMsg = (jam === '1' || jam === '7') && dataShalat.length > 0 ? `, ${dataShalat.length} data shalat` : '';
+          const _ssd2 = new Date(tanggal + 'T00:00:00').getDay();
+          const _isSaveSJ2 = _ssd2 === 1 || _ssd2 === 5;
+          const _saveJams2 = _isSaveSJ2 ? ['2'] : ['1', '7'];
+          const shalatMsg = _saveJams2.includes(jam) && dataShalat.length > 0 ? `, ${dataShalat.length} data shalat` : '';
           showSuccess(`${dataAbsen.length} data absensi tersimpan${shalatMsg}`);
           document.getElementById('absenContainer').style.display = 'none';
         } catch (err) {
