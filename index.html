@@ -2360,9 +2360,9 @@
       const _day = new Date(tanggal + 'T00:00:00').getDay(); // 0=Min, 1=Sen, ..., 5=Jum
       const _isSenin_Jumat = _day === 1 || _day === 5;
 
-      // Senin/Jumat: shalat (status + jumlah) diisi sekaligus di jam 2
-      // Hari lain: jumlah di jam 1, status di jam 7 (logika lama)
-      const showShalatSt  = _isSenin_Jumat ? (jam === '2' ? 'table-cell' : 'none') : (jam === '7' ? 'table-cell' : 'none');
+      // Status shalat (Y/T/H) selalu di jam 7 untuk semua hari — termasuk Senin & Jumat
+      // Jumlah shalat (rakaat): pindah ke jam 2 di Senin/Jumat, tetap jam 1 di hari lain
+      const showShalatSt  = jam === '7' ? 'table-cell' : 'none';
       const showShalatJml = _isSenin_Jumat ? (jam === '2' ? 'table-cell' : 'none') : (jam === '1' ? 'table-cell' : 'none');
 
       // Tampilkan/sembunyikan header kolom shalat
@@ -2519,7 +2519,7 @@
         // Deteksi hari untuk menentukan jam shalat
         const _sd = new Date(tanggal + 'T00:00:00').getDay();
         const _isSJ = _sd === 1 || _sd === 5; // Senin atau Jumat
-        const _shalatJams = _isSJ ? ['2'] : ['1', '7'];
+        const _shalatJams = _isSJ ? ['2', '7'] : ['1', '7']; // jam 7 tetap untuk status (Y/T/H)
 
         if (shalatJmlRaw === 'H') {
           shalatSt = 'H'; shalatJml = 0;
@@ -2557,7 +2557,8 @@
           // Proses simpan shalat sesuai jam yang berlaku
           const _ssd = new Date(tanggal + 'T00:00:00').getDay();
           const _isSaveSJ = _ssd === 1 || _ssd === 5; // Senin atau Jumat
-          const _saveJams = _isSaveSJ ? ['2'] : ['1', '7'];
+          // Senin/Jumat: jam 2 (jumlah) + jam 7 (status); Hari lain: jam 1 (jumlah) + jam 7 (status)
+          const _saveJams = _isSaveSJ ? ['2', '7'] : ['1', '7'];
 
           if (_saveJams.includes(jam)) {
             if (dataShalat.length > 0) {
@@ -2568,12 +2569,12 @@
 
               const mergedShalat = dataShalat.map(newSh => {
                 const oldSh = existingMap[newSh.nis];
-                if (oldSh && !_isSaveSJ) {
-                  // Hari biasa: jam 1 → preserve status dari DB; jam 7 → preserve jumlah dari DB
-                  if (jam === '1') newSh.status = oldSh.status;
+                if (oldSh) {
+                  // Jam jumlah (1 hari biasa, 2 Senin/Jumat): preserve status dari DB
+                  if (jam !== '7') newSh.status = oldSh.status;
+                  // Jam 7 (semua hari): preserve jumlah dari DB
                   if (jam === '7') newSh.jumlah  = oldSh.jumlah;
                 }
-                // Senin/Jumat jam 2: isi status + jumlah sekaligus, tidak perlu merge
                 return newSh;
               });
 
@@ -2587,7 +2588,7 @@
           toggleButtonLoading('button[onclick="simpanAbsensi()"]', false);
           const _ssd2 = new Date(tanggal + 'T00:00:00').getDay();
           const _isSaveSJ2 = _ssd2 === 1 || _ssd2 === 5;
-          const _saveJams2 = _isSaveSJ2 ? ['2'] : ['1', '7'];
+          const _saveJams2 = _isSaveSJ2 ? ['2', '7'] : ['1', '7'];
           const shalatMsg = _saveJams2.includes(jam) && dataShalat.length > 0 ? `, ${dataShalat.length} data shalat` : '';
           showSuccess(`${dataAbsen.length} data absensi tersimpan${shalatMsg}`);
           document.getElementById('absenContainer').style.display = 'none';
