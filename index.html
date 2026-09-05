@@ -5524,7 +5524,7 @@
             const no = row.nopenilaian;
             daftarPenilaianSet.add(no);
             if (!existingNilai[no]) existingNilai[no] = {};
-            existingNilai[no][row.nis] = row.nilai;
+            existingNilai[no][row.nis] = { id: row.id, nilai: row.nilai };
           });
         }
         const daftarPenilaian = Array.from(daftarPenilaianSet).sort((a,b) => a-b);
@@ -5638,7 +5638,8 @@
       App.pesertaData.forEach((s, i) => {
         let val = '';
         if (mode === 'edit' && noPenilaian !== null && App.existingData[noPenilaian]) {
-          const nisVal = App.existingData[noPenilaian][s.nis];
+          const nisObj = App.existingData[noPenilaian][s.nis];
+          const nisVal = nisObj ? nisObj.nilai : undefined;
           val = (nisVal !== undefined && nisVal !== '') ? nisVal : '';
         }
         html += `<tr><td>${i + 1}</td><td>${s.nis}</td><td style="text-align:left;">${s.nama}</td><td><input type="number" id="input_nilai_${s.nis}" value="${val}" min="0" max="100" class="form-control"></td></tr>`;
@@ -5650,16 +5651,32 @@
       const kelas = document.getElementById('nilaiKelas').value;
       const mapel = document.getElementById('nilaiMapel').value;
       const jenis = document.getElementById('nilaiJenis').value;
-      const bulan = parseInt(document.getElementById('nilaiBulan').value);
+      const rawBulan = document.getElementById('nilaiBulan').value;
       const tahun = parseInt(document.getElementById('nilaiTahun').value);
       const mode = App.currentMode || 'baru';
       const noPenilaian = App.currentNoPenilaian || 1;
+      
+      let tanggalData = null;
+      if (rawBulan !== 'all') {
+        tanggalData = new Date(tahun, parseInt(rawBulan) - 1, 1, 12, 0, 0).toISOString();
+      } else if (mode === 'baru') {
+        showCustomAlert('Pilih bulan yang spesifik untuk menyimpan nilai baru!', 'error');
+        return;
+      }
+      
       const dataToSave = [];
-      const tanggalData = new Date(tahun, bulan - 1, 1, 12, 0, 0);
       App.pesertaData.forEach(s => {
         const val = document.getElementById(`input_nilai_${s.nis}`).value;
         if (val !== '') {
-          dataToSave.push({ tanggal: tanggalData.toISOString(), kelas, matapelajaran: mapel, nis: s.nis, nama: s.nama, jenistugas: jenis, nopenilaian: noPenilaian, nilai: parseFloat(val), username_guru: App.user.username });
+          const existingObj = (mode === 'edit' && App.existingData[noPenilaian] && App.existingData[noPenilaian][s.nis]) ? App.existingData[noPenilaian][s.nis] : null;
+          const existingId = existingObj ? existingObj.id : null;
+          
+          const payload = { kelas, matapelajaran: mapel, nis: s.nis, nama: s.nama, jenistugas: jenis, nopenilaian: noPenilaian, nilai: parseFloat(val), username_guru: App.user.username };
+          
+          if (tanggalData) payload.tanggal = tanggalData;
+          if (existingId) payload.id = existingId;
+          
+          dataToSave.push(payload);
         }
       });
       if (dataToSave.length === 0) { showCustomAlert('Tidak ada nilai yang diisi!', 'error'); return; }
@@ -5668,15 +5685,7 @@
       showCustomConfirm(pesan, async function() {
         toggleButtonLoading('#nilaiSimpanBtn', true, '⏳ Menyimpan...');
         try {
-          if (mode === 'edit') {
-            const startDate = new Date(tahun, bulan - 1, 1).toISOString();
-            const endDate = new Date(tahun, bulan, 0).toISOString();
-            const { error: delErr } = await supaClient.from('nilai').delete()
-              .eq('kelas', kelas).eq('matapelajaran', mapel).eq('jenistugas', jenis)
-              .eq('nopenilaian', noPenilaian).gte('tanggal', startDate).lte('tanggal', endDate);
-            if (delErr) throw delErr;
-          }
-          const { error: insErr } = await supaClient.from('nilai').insert(dataToSave);
+          const { error: insErr } = await supaClient.from('nilai').upsert(dataToSave);
           if (insErr) throw insErr;
           toggleButtonLoading('#nilaiSimpanBtn', false);
           showCustomAlert(`Berhasil ${aksiLabel} data penilaian`, 'success');
@@ -5699,7 +5708,10 @@
         let val = '';
         const inputEl = document.getElementById(`input_nilai_${s.nis}`);
         if (inputEl) { val = inputEl.value; }
-        else if (noPenilaian && App.existingData && App.existingData[noPenilaian]) { val = App.existingData[noPenilaian][s.nis] ?? ''; }
+        else if (noPenilaian && App.existingData && App.existingData[noPenilaian]) { 
+          const nisObj = App.existingData[noPenilaian][s.nis];
+          val = nisObj ? (nisObj.nilai ?? '') : ''; 
+        }
         csv += `${s.nis};${s.nama};${val}\n`;
       });
       const suffix = noPenilaian ? `_P${noPenilaian}` : '';
