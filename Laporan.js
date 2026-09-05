@@ -2010,19 +2010,26 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     supaClient.from('shalat').select('nis, status, tanggal, jumlah').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('catatan').select('nis, dimensi_id, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
-    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    // Nilai tidak difilter tanggal (tanggal nilai = awal bulan entry, bukan tanggal kegiatan)
+    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas),
     supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('catatan_ekskul').select('nis, nama_ekskul, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
-    supaClient.from('pembinaan_wali').select('nis, tanggal, isi_pembinaan, tindak_lanjut').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true})
+    // Kolom yang benar: isi (bukan isi_pembinaan)
+    supaClient.from('pembinaan_wali').select('nis, tanggal, topik, masalah, isi, tindak_lanjut').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true})
   ];
 
   const results = await Promise.all(queries);
-  const dataAbsensi = results[0].data || [];
-  const dataShalat = results[1].data || [];
-  const dataPelanggaran = results[2].data || [];
-  const dataCatatan = results[3].data || [];
-  const dataNilai = results[4].data || [];
-  const dataAbsenEkskul = results[5].data || [];
+
+  // Cek error tiap query agar mudah dideteksi jika ada masalah
+  const queryNames = ['absensi','shalat','pelanggaran','catatan','nilai','absen_ekskul','catatan_ekskul','pembinaan_wali'];
+  results.forEach((r, i) => { if (r.error) console.warn(`[LaporanSiswa] Query '${queryNames[i]}' error:`, r.error.message); });
+
+  const dataAbsensi       = results[0].data || [];
+  const dataShalat        = results[1].data || [];
+  const dataPelanggaran   = results[2].data || [];
+  const dataCatatan       = results[3].data || [];
+  const dataNilai         = results[4].data || [];
+  const dataAbsenEkskul   = results[5].data || [];
   const dataCatatanEkskul = results[6].data || [];
   const dataPembinaanWali = results[7].data || [];
 
@@ -2042,7 +2049,8 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
       if (absen[statusHarianAbsenSiswa[tgl]] !== undefined) absen[statusHarianAbsenSiswa[tgl]]++;
     }
 
-    const shalat = { Y: 0, N: 0, B: 0 };
+    // Status shalat: Y = Ya, T = Tidak, H = Halangan/berhalangan
+    const shalat = { Y: 0, T: 0, H: 0 };
     dataShalat.filter(s => s.nis === sNis).forEach(s => { if (shalat[s.status] !== undefined) shalat[s.status]++; });
 
     const pelanggaran = dataPelanggaran.filter(p => p.nis === sNis);
@@ -2150,7 +2158,7 @@ function generateHtmlLaporanSiswa(result) {
           <td>Hadir: <b>${item.absen.H}</b></td><td>Izin: <b>${item.absen.I}</b></td>
           <td>Sakit: <b>${item.absen.S}</b></td><td>Alpa: <b>${item.absen.A}</b></td>
           <td>Cabut: <b>${item.absen.C}</b></td><td>Terlambat: <b>${item.absen.T}</b></td>
-          <td>Ya: <b>${item.shalat.Y}</b></td><td>Tidak: <b>${item.shalat.N}</b></td><td>Halangan: <b>${item.shalat.B}</b></td>
+          <td>Ya: <b>${item.shalat.Y}</b></td><td>Tidak: <b>${item.shalat.T}</b></td><td>Halangan: <b>${item.shalat.H}</b></td>
         </tr>
       </table>`;
 
@@ -2187,9 +2195,9 @@ function generateHtmlLaporanSiswa(result) {
     if (item.pembinaanWali && item.pembinaanWali.length > 0) {
       let pwRows = '';
       item.pembinaanWali.forEach((pw, i) => {
-        pwRows += `<tr><td style="text-align:center;">${i+1}</td><td style="text-align:center;">${pw.tanggal.split('-').reverse().join('/')}</td><td>${pw.isi_pembinaan || '-'}</td><td>${pw.tindak_lanjut || '-'}</td></tr>`;
+        pwRows += `<tr><td style="text-align:center;">${i+1}</td><td style="text-align:center;">${pw.tanggal.split('-').reverse().join('/')}</td><td>${pw.topik || '-'}</td><td>${pw.isi || '-'}</td><td>${pw.tindak_lanjut || '-'}</td></tr>`;
       });
-      pembinaanHtml = `<div class="section-title">B. Catatan Pembinaan Wali</div><table class="data"><thead><tr><th style="width:30px;">No</th><th style="width:75px;">Tanggal</th><th>Isi Pembinaan</th><th>Tindak Lanjut</th></tr></thead><tbody>${pwRows}</tbody></table>`;
+      pembinaanHtml = `<div class="section-title">B. Catatan Pembinaan Wali</div><table class="data"><thead><tr><th style="width:30px;">No</th><th style="width:75px;">Tanggal</th><th style="width:120px;">Topik</th><th>Isi Pembinaan</th><th>Tindak Lanjut</th></tr></thead><tbody>${pwRows}</tbody></table>`;
     } else {
       pembinaanHtml = `<div class="section-title">B. Catatan Pembinaan Wali</div><table class="data"><tr><td style="text-align:center;font-style:italic;">Tidak ada catatan pembinaan wali kelas</td></tr></table>`;
     }
