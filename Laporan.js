@@ -1175,11 +1175,10 @@ async function downloadLaporanSikap() {
     const tglStart = `${tahun}-01-01`;
     const tglEnd = `${tahun}-12-31`;
 
-    // Tarik catatan, pelanggaran, master_dimensi, dan guru secara bersamaan
-    const [resCatatan, resPelanggaran, resDimensi, resGuru] = await Promise.all([
+    // Tarik catatan, pelanggaran, dan guru secara bersamaan
+    const [resCatatan, resPelanggaran, resGuru] = await Promise.all([
       supaClient.from('catatan').select('*').eq('kelas', kelas).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', { ascending: true }),
       supaClient.from('pelanggaran').select('*').eq('kelas', kelas).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', { ascending: true }),
-      supaClient.from('master_dimensi').select('*'),
       supaClient.from('data_guru').select('nama, nip').eq('wali_kelas', kelas).limit(1)
     ]);
 
@@ -1194,18 +1193,13 @@ async function downloadLaporanSikap() {
       nipWali = resGuru.data[0].nip || '-';
     }
 
-    // Buat map dimensi untuk lookup cepat
-    const dimensiMap = {};
-    (resDimensi.data || []).forEach(d => { dimensiMap[d.id] = d; });
-
     // Gabungkan dengan label tipe
     const dataCatatan = (resCatatan.data || []).map(r => {
-      const elemenEntry = dimensiMap[r.dimensi_id];
       return {
         ...r,
         tipe: 'POSITIF',
-        kategori: elemenEntry ? elemenEntry.dimensi : '-',
-        detail: elemenEntry ? elemenEntry.elemen : '-',
+        kategori: r.jenis || '-',
+        detail: r.kategori || '-',
         keterangan: r.catatan || '-',
         guru: r.username_guru || '-'
       };
@@ -1986,12 +1980,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     nipWali = guruData[0].nip || '-';
   }
 
-  // 2. Data Master Dimensi (untuk catatan guru)
-  const { data: masterDimensi } = await supaClient.from('master_dimensi').select('*');
-  const mapDimensi = {};
-  if (masterDimensi) {
-    masterDimensi.forEach(d => { mapDimensi[d.id] = d; });
-  }
+  // 2. (Tidak dipakai lagi, master dimensi digabung)
 
   // 3. Data Master Siswa
   let querySiswa = supaClient.from('data_siswa').select('nis, nama, kelas').eq('kelas', kelas);
@@ -2009,7 +1998,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     supaClient.from('absensi').select('nis, tanggal, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('shalat').select('nis, status, tanggal, jumlah').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
-    supaClient.from('catatan').select('nis, dimensi_id, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
+    supaClient.from('catatan').select('nis, jenis, kategori, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     // Nilai tidak difilter tanggal (tanggal nilai = awal bulan entry, bukan tanggal kegiatan)
     supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas),
     supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
@@ -2056,7 +2045,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     const pelanggaran = dataPelanggaran.filter(p => p.nis === sNis);
 
     const catatan = dataCatatan.filter(c => c.nis === sNis).map(c => ({
-      ...c, dimensi_nama: mapDimensi[c.dimensi_id]?.elemen || 'Lainnya'
+      ...c, dimensi_nama: c.kategori ? `${c.jenis} - ${c.kategori}` : (c.jenis || 'Lainnya')
     }));
 
     // Nilai per mapel+jenis milik siswa ini
