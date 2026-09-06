@@ -4152,15 +4152,15 @@
             <input type="date" id="catatanTanggal" class="form-control" value="${today}">
           </div>
           <div class="form-group">
-            <label>Dimensi</label>
+            <label>Jenis</label>
             <select id="catatanDimensi" class="form-control" onchange="loadElemenDimensi()">
-              <option value="">-- Pilih Dimensi --</option>
+              <option value="">-- Pilih Jenis --</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Elemen</label>
-            <select id="catatanElemen" class="form-control">
-              <option value="">-- Pilih Dimensi Dulu --</option>
+            <label>Kategori</label>
+            <select id="catatanElemen" class="form-control" onchange="autoFillPoinCatatan()">
+              <option value="">-- Pilih Jenis Dulu --</option>
             </select>
           </div>
           <div class="form-group">
@@ -4258,23 +4258,23 @@
         return;
       }
 
-      // Ambil unique dimensi dari map
-      const uniqueDimensi = new Set();
+      // Ambil unique jenis dari map
+      const uniqueJenis = new Set();
 
       Object.values(dimensiMap).forEach(d => {
-        if (d && d.dimensi) {
-          uniqueDimensi.add(d.dimensi);
+        if (d && d.jenis) {
+          uniqueJenis.add(d.jenis);
         }
       });
 
-      if (uniqueDimensi.size === 0) {
-        selectDimensi.innerHTML = '<option value="">-- Data dimensi kosong --</option>';
+      if (uniqueJenis.size === 0) {
+        selectDimensi.innerHTML = '<option value="">-- Data kosong --</option>';
         return;
       }
 
-      let options = '<option value="">-- Pilih Dimensi --</option>';
-      Array.from(uniqueDimensi).sort().forEach(dimensi => {
-        options += `<option value="${dimensi}">${dimensi}</option>`;
+      let options = '<option value="">-- Pilih Jenis --</option>';
+      Array.from(uniqueJenis).sort().forEach(jenis => {
+        options += `<option value="${jenis}">${jenis}</option>`;
       });
 
       selectDimensi.innerHTML = options;
@@ -4282,24 +4282,34 @@
 
     // Load elemen berdasarkan dimensi yang dipilih (TANPA server)
     function loadElemenDimensi() {
-      const dimensiDipilih = document.getElementById('catatanDimensi').value;
+      const jenisDipilih = document.getElementById('catatanDimensi').value;
       const selectElemen = document.getElementById('catatanElemen');
 
-      if (!dimensiDipilih) {
-        selectElemen.innerHTML = '<option value="">-- Pilih Dimensi Dulu --</option>';
+      if (!jenisDipilih) {
+        selectElemen.innerHTML = '<option value="">-- Pilih Jenis Dulu --</option>';
         return;
       }
 
       // Filter dari masterDimensi yang sudah di-load
-      let options = '<option value="">-- Pilih Elemen --</option>';
+      let options = '<option value="">-- Pilih Kategori --</option>';
 
       Object.values(masterDimensi).forEach(d => {
-        if (d.dimensi === dimensiDipilih) {
-          options += `<option value="${d.id}">${d.elemen}</option>`;
+        if (d.jenis === jenisDipilih) {
+          options += `<option value="${d.kategori}" data-poin="${d.poin}">${d.kategori}</option>`;
         }
       });
 
       selectElemen.innerHTML = options;
+    }
+
+    function autoFillPoinCatatan() {
+      const select = document.getElementById('catatanElemen');
+      const selectedOption = select.options[select.selectedIndex];
+      if (selectedOption && selectedOption.dataset.poin) {
+        document.getElementById('catatanPoin').value = selectedOption.dataset.poin;
+      } else {
+        document.getElementById('catatanPoin').value = '0';
+      }
     }
     // ============ FUNGSI SIMPAN CATATAN ============
     async function simpanCatatan() {
@@ -4309,14 +4319,14 @@
       const namaSelect = document.getElementById('catatanSiswa').selectedOptions[0];
       const nama = namaSelect ? namaSelect.text.split(' - ')[1] || '' : '';
       const tanggal = document.getElementById('catatanTanggal').value;
-      const dimensi = document.getElementById('catatanDimensi').value;
-      const elemenId = document.getElementById('catatanElemen').value;
+      const jenis = document.getElementById('catatanDimensi').value;
+      const kategori = document.getElementById('catatanElemen').value;
       const poin = document.getElementById('catatanPoin').value;
       const catatan = document.getElementById('catatanIsi').value;
 
       // Validasi
-      if (!kelas || !nis || !tanggal || !dimensi || !elemenId || !catatan) {
-        showError('Lengkapi data: Kelas, Siswa, Tanggal, Dimensi, Elemen, dan Catatan harus diisi!');
+      if (!kelas || !nis || !tanggal || !jenis || !kategori || !catatan) {
+        showError('Lengkapi data: Kelas, Siswa, Tanggal, Jenis, Kategori, dan Catatan harus diisi!');
         return;
       }
 
@@ -4327,7 +4337,8 @@
           kelas: kelas,
           nis: nis,
           nama: nama,
-          dimensi_id: elemenId,
+          jenis: jenis,
+          kategori: kategori,
           poin: poin ? parseInt(poin) : 0,
           catatan: catatan,
           username_guru: App.user.username
@@ -4379,22 +4390,22 @@
         return;
       }
 
-      let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Siswa</th><th>Dimensi</th><th>Elemen</th><th>Poin</th><th>Catatan</th><th>Diinput Oleh</th><th>Aksi</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Siswa</th><th>Jenis</th><th>Kategori</th><th>Poin</th><th>Catatan</th><th>Diinput Oleh</th><th>Aksi</th></tr></thead><tbody>';
 
       data.forEach((item, index) => {
         const rowNumber = ((currentPage - 1) * CATATAN_PER_PAGE) + index + 1;
         const poinText = item.poin ? (item.poin > 0 ? `+${item.poin}` : item.poin) : '-';
-        // Resolve dimensi & elemen dari masterDimensi cache
-        const elemenEntry = Object.values(masterDimensi || {}).find(d => String(d.id) === String(item.dimensi_id));
-        const dimensiNama = elemenEntry ? elemenEntry.dimensi : '-';
-        const elemenNama = elemenEntry ? elemenEntry.elemen : '-';
+        
+        // Langsung ambil dari item (migrasi baru)
+        const jenisNama = item.jenis || '-';
+        const kategoriNama = item.kategori || '-';
 
         html += '<tr>';
         html += '<td>' + rowNumber + '</td>';
         html += '<td>' + item.tanggal + '</td>';
         html += '<td style="text-align:left">' + item.nama + '</td>';
-        html += '<td>' + dimensiNama + '</td>';
-        html += '<td>' + elemenNama + '</td>';
+        html += '<td>' + jenisNama + '</td>';
+        html += '<td>' + kategoriNama + '</td>';
         html += '<td>' + poinText + '</td>';
         html += '<td style="text-align:left">' + (item.catatan || '-') + '</td>';
         html += '<td>' + (item.username_guru || '-') + '</td>';
@@ -4436,10 +4447,7 @@
         const { data, error } = await supaClient.from('catatan').select('*').eq('id', id).single();
         showLoading(false);
         if (error) throw error;
-        // Resolve nama dimensi dari masterDimensi
-        const elemenEntry = Object.values(masterDimensi || {}).find(d => String(d.id) === String(data.dimensi_id));
-        const dimensiName = elemenEntry ? elemenEntry.dimensi : '';
-        tampilkanModalEdit({ ...data, dimensi: dimensiName, elemenId: data.dimensi_id });
+        tampilkanModalEdit(data);
       } catch (e) {
         showLoading(false);
         showError('Gagal memuat data: ' + e.message);
@@ -4468,19 +4476,19 @@
           <input type="text" class="form-control" value="${data.nama} (${data.nis})" readonly style="background:#f5f5f5;">
         </div>
         <div class="form-group">
-          <label>Dimensi</label>
+          <label>Jenis</label>
           <select id="editDimensiCatatan" class="form-control" onchange="loadEditElemen()">
-            <option value="">-- Pilih Dimensi --</option>
+            <option value="">-- Pilih Jenis --</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Elemen</label>
-          <select id="editElemenCatatan" class="form-control">
-            <option value="">-- Pilih Dimensi Dulu --</option>
+          <label>Kategori</label>
+          <select id="editElemenCatatan" class="form-control" onchange="autoFillEditPoinCatatan()">
+            <option value="">-- Pilih Jenis Dulu --</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Poin (opsional)</label>
+          <label>Poin</label>
           <input type="number" id="editPoinCatatan" class="form-control" value="${data.poin || 0}" step="1">
         </div>
         <div class="form-group">
@@ -4498,7 +4506,7 @@
       document.body.appendChild(modal);
 
       // Load dimensi untuk modal edit
-      loadEditDimensi(data.dimensi, data.elemenId);
+      loadEditDimensi(data.jenis, data.kategori);
     }
 
     function tutupModalEdit() {
@@ -4507,50 +4515,56 @@
       currentEditId = null;
     }
 
-    function loadEditDimensi(dimensiTerpilih, elemenIdTerpilih) {
-      // OPTIMASI: Gunakan cache lokal masterDimensi (sudah di-load, tidak perlu server call)
+    function loadEditDimensi(jenisTerpilih, kategoriTerpilih) {
       const selectDimensi = document.getElementById('editDimensiCatatan');
       if (!selectDimensi) return;
 
       const dimensiMap = masterDimensi || {};
-      const uniqueDimensi = new Set();
+      const uniqueJenis = new Set();
       Object.values(dimensiMap).forEach(d => {
-        if (d && d.dimensi) uniqueDimensi.add(d.dimensi);
+        if (d && d.jenis) uniqueJenis.add(d.jenis);
       });
 
-      let options = '<option value="">-- Pilih Dimensi --</option>';
-      Array.from(uniqueDimensi).sort().forEach(dimensi => {
-        const selected = (dimensi === dimensiTerpilih) ? 'selected' : '';
-        options += `<option value="${dimensi}" ${selected}>${dimensi}</option>`;
+      let options = '<option value="">-- Pilih Jenis --</option>';
+      Array.from(uniqueJenis).sort().forEach(jenis => {
+        const selected = (jenis === jenisTerpilih) ? 'selected' : '';
+        options += `<option value="${jenis}" ${selected}>${jenis}</option>`;
       });
 
       selectDimensi.innerHTML = options;
 
       // Load elemen untuk dimensi yang dipilih
-      if (dimensiTerpilih) {
-        loadEditElemen(elemenIdTerpilih);
+      if (jenisTerpilih) {
+        loadEditElemen(kategoriTerpilih);
       }
     }
 
-    function loadEditElemen(elemenIdTerpilih) {
-      const dimensiDipilih = document.getElementById('editDimensiCatatan').value;
+    function loadEditElemen(kategoriTerpilih) {
+      const jenisDipilih = document.getElementById('editDimensiCatatan').value;
       const selectElemen = document.getElementById('editElemenCatatan');
 
-      if (!dimensiDipilih) {
-        selectElemen.innerHTML = '<option value="">-- Pilih Dimensi Dulu --</option>';
+      if (!jenisDipilih) {
+        selectElemen.innerHTML = '<option value="">-- Pilih Jenis Dulu --</option>';
         return;
       }
 
-      // OPTIMASI: Gunakan cache lokal masterDimensi — tidak perlu server call lagi
       const dimensiMap = masterDimensi || {};
-      let options = '<option value="">-- Pilih Elemen --</option>';
+      let options = '<option value="">-- Pilih Kategori --</option>';
       Object.values(dimensiMap).forEach(d => {
-        if (d && d.dimensi === dimensiDipilih) {
-          const selected = (d.id == elemenIdTerpilih) ? 'selected' : '';
-          options += `<option value="${d.id}" ${selected}>${d.elemen}</option>`;
+        if (d && d.jenis === jenisDipilih) {
+          const selected = (d.kategori === kategoriTerpilih) ? 'selected' : '';
+          options += `<option value="${d.kategori}" data-poin="${d.poin}" ${selected}>${d.kategori}</option>`;
         }
       });
       selectElemen.innerHTML = options;
+    }
+
+    function autoFillEditPoinCatatan() {
+      const select = document.getElementById('editElemenCatatan');
+      const selectedOption = select.options[select.selectedIndex];
+      if (selectedOption && selectedOption.dataset.poin) {
+        document.getElementById('editPoinCatatan').value = selectedOption.dataset.poin;
+      }
     }
 
     async function simpanEditCatatan() {
@@ -4558,13 +4572,14 @@
 
       const dataBaru = {
         tanggal: document.getElementById('editTanggalCatatan').value,
-        dimensiId: document.getElementById('editElemenCatatan').value,
+        jenis: document.getElementById('editDimensiCatatan').value,
+        kategori: document.getElementById('editElemenCatatan').value,
         poin: parseInt(document.getElementById('editPoinCatatan').value) || 0,
         catatan: document.getElementById('editIsiCatatan').value
       };
 
-      if (!dataBaru.tanggal || !dataBaru.dimensiId || !dataBaru.catatan) {
-        showError('Tanggal, Elemen, dan Isi Catatan harus diisi!');
+      if (!dataBaru.tanggal || !dataBaru.jenis || !dataBaru.kategori || !dataBaru.catatan) {
+        showError('Tanggal, Jenis, Kategori, dan Isi Catatan harus diisi!');
         return;
       }
 
@@ -4572,7 +4587,8 @@
       try {
         const { error } = await supaClient.from('catatan').update({
           tanggal: dataBaru.tanggal,
-          dimensi_id: dataBaru.dimensiId,
+          jenis: dataBaru.jenis,
+          kategori: dataBaru.kategori,
           poin: dataBaru.poin,
           catatan: dataBaru.catatan
         }).eq('id', currentEditId);
