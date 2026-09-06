@@ -4158,7 +4158,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Kategori</label>
+            <label>Perilaku</label>
             <select id="catatanElemen" class="form-control" onchange="autoFillPoinCatatan()">
               <option value="">-- Pilih Jenis Dulu --</option>
             </select>
@@ -4291,7 +4291,7 @@
       }
 
       // Filter dari masterDimensi yang sudah di-load
-      let options = '<option value="">-- Pilih Kategori --</option>';
+      let options = '<option value="">-- Pilih Perilaku --</option>';
 
       Object.values(masterDimensi).forEach(d => {
         if (d.jenis === jenisDipilih) {
@@ -4390,7 +4390,7 @@
         return;
       }
 
-      let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Siswa</th><th>Jenis</th><th>Kategori</th><th>Poin</th><th>Catatan</th><th>Diinput Oleh</th><th>Aksi</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>No</th><th>Tanggal</th><th>Nama Siswa</th><th>Jenis</th><th>Perilaku</th><th>Poin</th><th>Catatan</th><th>Diinput Oleh</th><th>Aksi</th></tr></thead><tbody>';
 
       data.forEach((item, index) => {
         const rowNumber = ((currentPage - 1) * CATATAN_PER_PAGE) + index + 1;
@@ -4482,7 +4482,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Kategori</label>
+          <label>Perilaku</label>
           <select id="editElemenCatatan" class="form-control" onchange="autoFillEditPoinCatatan()">
             <option value="">-- Pilih Jenis Dulu --</option>
           </select>
@@ -4549,7 +4549,7 @@
       }
 
       const dimensiMap = masterDimensi || {};
-      let options = '<option value="">-- Pilih Kategori --</option>';
+      let options = '<option value="">-- Pilih Perilaku --</option>';
       Object.values(dimensiMap).forEach(d => {
         if (d && d.jenis === jenisDipilih) {
           const selected = (d.kategori === kategoriTerpilih) ? 'selected' : '';
