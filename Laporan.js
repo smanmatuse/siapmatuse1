@@ -1265,8 +1265,8 @@ async function downloadLaporanSikap() {
             <th style="width:130px;">Nama Siswa</th>
             <th style="width:50px;">NIS</th>
             <th style="width:60px;">Tipe</th>
-            <th style="width:100px;">Dimensi/Jenis</th>
-            <th style="width:120px;">Elemen/Perilaku</th>
+            <th style="width:100px;">Jenis</th>
+            <th style="width:120px;">Perilaku</th>
             <th style="width:30px;">Poin</th>
             <th>Catatan / Tindak Lanjut</th>
             <th style="width:90px;">Guru</th>
@@ -1346,8 +1346,8 @@ async function downloadLaporanSikap() {
                 <th style="width:30px;">No</th>
                 <th style="width:75px;">Tanggal</th>
                 <th style="width:60px;">Tipe</th>
-                <th style="width:110px;">Dimensi/Jenis</th>
-                <th style="width:130px;">Elemen/Perilaku</th>
+                <th style="width:110px;">Jenis</th>
+                <th style="width:130px;">Perilaku</th>
                 <th style="width:30px;">Poin</th>
                 <th>Catatan / Tindak Lanjut</th>
                 <th style="width:90px;">Guru</th>
