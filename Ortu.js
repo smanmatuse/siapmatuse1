@@ -205,6 +205,7 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   }
 
   let totalBobot = 0;
+  let allSikap = [];
   // Perbaiki mapping kolom: catatan -> {jenis: r.jenis + ' - ' + r.kategori, detail: r.catatan}
   if (resSikap.data) {
     resSikap.data.forEach(r => {
