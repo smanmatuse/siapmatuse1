@@ -82,7 +82,7 @@ function renderOrangTua() {
   document.getElementById('orang_tua').innerHTML = html;
   
   const now = new Date();
-  document.getElementById('ortuBulan').value = now.getMonth() + 1;
+  document.getElementById('ortuBulan').value = 'ALL';
   document.getElementById('ortuTahun').value = now.getFullYear();
 
   // Auto-load ringkasan realtime di atas filter
@@ -121,7 +121,7 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
 
   const absenQueryAll = supaClient.from('absensi').select('tanggal, status').eq('nis', nis);
   const shalatQueryAll = supaClient.from('shalat').select('tanggal, status, jumlah').eq('nis', nis);
-  const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, catatan').eq('nis', nis);
+  const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, jenis, kategori, catatan').eq('nis', nis);
   const pelanggaranQueryAll = supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis);
   const pembinaanQueryAll = supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis);
   // Ambil semua nilai di kelas untuk keperluan deteksi silang (nilai belum lengkap)
@@ -205,14 +205,16 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   }
 
   let totalBobot = 0;
-  let allSikap = [];
-  // Perbaiki mapping kolom: catatan -> {jenis: 'Catatan Positif', detail: r.catatan}
+  // Perbaiki mapping kolom: catatan -> {jenis: r.jenis + ' - ' + r.kategori, detail: r.catatan}
   if (resSikap.data) {
     resSikap.data.forEach(r => {
+      let jenisText = r.jenis || 'Catatan Positif';
+      if (r.kategori) jenisText += ' - ' + r.kategori;
+      
       allSikap.push({
         tanggal: r.tanggal,
         poin: r.poin,
-        jenis: 'Catatan Positif',
+        jenis: jenisText,
         detail: r.catatan || '-'
       });
     });
@@ -467,9 +469,9 @@ async function downloadLaporanOrtu() {
 
       <div style="margin-bottom: 20px;">
         <!-- REKAP KEHADIRAN (FILTERED) -->
-        <div class="form-section" style="padding: 15px; margin-bottom:15px; border: 1px solid #ddd; border-left: 4px solid #43a047; border-radius: 8px;">
-          <h4 style="margin:0 0 10px 0; color:#43a047; font-size:14px;">Rekap Kehadiran (${data.periode})</h4>
-          <div style="display:flex; justify-content:space-between; gap:2px;">
+        <div class="form-section" style="padding: 15px; margin-bottom:15px; border: 1px solid #ddd; border-left: 4px solid #43a047; border-radius: 8px; overflow-x: auto;">
+          <h4 style="margin:0 0 10px 0; color:#43a047; font-size:14px; min-width: max-content;">Rekap Kehadiran (${data.periode})</h4>
+          <div style="display:flex; justify-content:space-between; gap:10px; min-width: max-content;">
             <div style="text-align:center;"><div style="font-size:11px; color:#666;">Hadir</div><div style="font-size:16px; font-weight:bold; color:#43a047;">${data.absen.H || 0}</div></div>
             <div style="text-align:center;"><div style="font-size:11px; color:#666;">Izin</div><div style="font-size:16px; font-weight:bold; color:#fbc02d;">${data.absen.I || 0}</div></div>
             <div style="text-align:center;"><div style="font-size:11px; color:#666;">Sakit</div><div style="font-size:16px; font-weight:bold; color:#1e88e5;">${data.absen.S || 0}</div></div>
@@ -479,9 +481,9 @@ async function downloadLaporanOrtu() {
           </div>
         </div>
 
-        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-left: 4px solid #8e24aa; border-radius: 8px;">
-          <h4 style="margin:0 0 10px 0; color:#8e24aa; font-size:14px;">Total Shalat (${data.periode})</h4>
-          <div style="display:flex; gap:15px; align-items:center;">
+        <div class="form-section" style="padding: 15px; margin-bottom:0; border: 1px solid #ddd; border-left: 4px solid #8e24aa; border-radius: 8px; overflow-x: auto;">
+          <h4 style="margin:0 0 10px 0; color:#8e24aa; font-size:14px; min-width: max-content;">Total Shalat (${data.periode})</h4>
+          <div style="display:flex; gap:15px; align-items:center; min-width: max-content;">
             <div style="flex:1; text-align:center; background:#f3e5f5; padding:10px; border-radius:8px;">
               <div style="font-size:12px; color:#666;">Ya</div>
               <div style="font-size:20px; font-weight:bold; color:#8e24aa;">${data.shalat.Y}</div>
@@ -514,7 +516,8 @@ async function downloadLaporanOrtu() {
         <h4 style="margin:0; color:#333;">Catatan Sikap & Pelanggaran</h4>
         ${totalBobot !== null ? `<div style="background:${totalBobotBg}; color:${totalBobotColor}; padding:4px 12px; border-radius:15px; font-weight:bold; font-size:14px; border:1px solid ${totalBobotBorder};">Total Bobot: ${totalBobotText}</div>` : ''}
       </div>
-      <div class="form-section" style="padding:0; margin-bottom: 20px; overflow:hidden; border:1px solid #eee;">
+      <div class="form-section" style="padding:0; margin-bottom: 20px; overflow-x:auto; border:1px solid #eee;">
+        <div style="min-width: 500px;">
       `;
       
       if (sikapList.length === 0) {
@@ -542,7 +545,7 @@ async function downloadLaporanOrtu() {
           `;
         });
       }
-      html += `</div>`;
+      html += `</div></div>`;
       
       html += `<h4 style="margin:0 0 10px 0; color:#333;">Catatan Pembinaan Wali</h4>`;
       
@@ -661,7 +664,7 @@ async function loadOrtuRealtime() {
     const [resAbsenAll, resShalatHari, resSikapHari, resPelanggaranHari, resPembinaanHari, resNilaiKelasHari] = await Promise.all([
       supaClient.from('absensi').select('tanggal, status').eq('nis', nis),
       supaClient.from('shalat').select('tanggal, status, jumlah').eq('nis', nis).eq('tanggal', todayStr),
-      supaClient.from('catatan').select('tanggal, poin, catatan').eq('nis', nis).eq('tanggal', todayStr),
+      supaClient.from('catatan').select('tanggal, poin, jenis, kategori, catatan').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').eq('kelas', kelas).eq('tanggal', todayStr)
@@ -696,7 +699,7 @@ async function loadOrtuRealtime() {
 
     // Sikap hari ini
     const sikapHari = [
-      ...(resSikapHari.data || []).map(r => ({ poin: r.poin, jenis: 'Catatan Positif', detail: r.catatan || '-' })),
+      ...(resSikapHari.data || []).map(r => ({ poin: r.poin, jenis: r.kategori ? `${r.jenis || 'Catatan'} - ${r.kategori}` : (r.jenis || 'Catatan Positif'), detail: r.catatan || '-' })),
       ...(resPelanggaranHari.data || []).map(r => ({ poin: r.poin, jenis: r.jenis || 'Pelanggaran', detail: r.perilaku || '-' }))
     ];
 
