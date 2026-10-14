@@ -9,12 +9,15 @@ function getPrioritasStatus(status) {
 
 // ================= HELPER: FETCH ALL PAGES (atasi batas 1000 baris Supabase) =================
 // Mengambil data secara bertahap (chunk 1000 baris) sampai semua data terbaca.
+// Diurutkan berdasarkan 'id' (kunci unik) agar urutan antar halaman konsisten:
+// tanpa ORDER BY, Postgres tidak menjamin urutan sehingga halaman bisa tumpang tindih / melewatkan baris.
 async function fetchAllPages(baseQuery) {
   const PAGE_SIZE = 1000;
   let allData = [];
   let from = 0;
+  const orderedQuery = baseQuery.order('id', { ascending: true });
   while (true) {
-    const { data, error } = await baseQuery.range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await orderedQuery.range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
     allData = allData.concat(data || []);
     if (!data || data.length < PAGE_SIZE) break; // sudah habis
@@ -1994,13 +1997,15 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
   const nisList = dataSiswaAll.map(s => s.nis);
   
   // 4. Fetch all data in parallel
+  // Bungkus fetchAllPages agar bentuk hasil tetap { data, error } seperti query biasa
+  const pagedQuery = (q) => fetchAllPages(q).then(data => ({ data, error: null })).catch(error => ({ data: [], error }));
   const queries = [
-    supaClient.from('absensi').select('nis, tanggal, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
+    pagedQuery(supaClient.from('absensi').select('nis, tanggal, status').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd)),
     supaClient.from('shalat').select('nis, status, tanggal, jumlah').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('catatan').select('nis, jenis, kategori, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     // Nilai tidak difilter tanggal (tanggal nilai = awal bulan entry, bukan tanggal kegiatan)
-    supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas),
+    pagedQuery(supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas)),
     supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('catatan_ekskul').select('nis, nama_ekskul, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     // Kolom yang benar: isi (bukan isi_pembinaan)
