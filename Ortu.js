@@ -89,6 +89,29 @@ function renderOrangTua() {
   loadOrtuRealtime();
 }
 
+// Daftar kelas tempat nilai siswa tersimpan: kelas reguler + kelas moving class yang dipilih siswa
+// (nilai mapel pilihan tersimpan dengan kolom 'kelas' = nama kelas moving class, mis. F1FIS)
+async function getKelasNilaiSiswa(nis, kelas) {
+  const list = [kelas];
+  const { data } = await supaClient.from('pilihan_moving_class').select('mapel_moving').eq('nis', nis);
+  (data || []).forEach(r => {
+    (r.mapel_moving || '').split(',').map(m => m.trim()).filter(Boolean).forEach(m => {
+      if (!list.includes(m)) list.push(m);
+    });
+  });
+  return list;
+}
+
+// Ambil semua halaman nilai (atasi batas 1000 baris), bentuk hasil tetap { data, error }
+async function ambilNilaiOrtu(query) {
+  try {
+    const data = (typeof fetchAllPages === 'function') ? await fetchAllPages(query) : ((await query).data || []);
+    return { data: data || [], error: null };
+  } catch (error) {
+    return { data: [], error };
+  }
+}
+
 async function fetchOrtuData(nis, kelas, bulan, tahun) {
   let walasData = { nama: '-' };
   let resWali = await supaClient.from('data_guru').select('nama').eq('wali_kelas', kelas).limit(1);
@@ -124,14 +147,15 @@ async function fetchOrtuData(nis, kelas, bulan, tahun) {
   const sikapQueryAll = supaClient.from('catatan').select('tanggal, poin, jenis, kategori, catatan').eq('nis', nis);
   const pelanggaranQueryAll = supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis);
   const pembinaanQueryAll = supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis);
-  // Ambil semua nilai di kelas untuk keperluan deteksi silang (nilai belum lengkap)
-  let nilaiKelasQuery = supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, tanggal').eq('kelas', kelas);
+  // Ambil semua nilai di kelas reguler + kelas moving class siswa untuk keperluan deteksi silang (nilai belum lengkap)
+  const kelasNilaiList = await getKelasNilaiSiswa(nis, kelas);
+  let nilaiKelasQuery = supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, tanggal').in('kelas', kelasNilaiList);
   if (startDate !== '2000-01-01' || endDate !== '2100-12-31') {
     nilaiKelasQuery = nilaiKelasQuery.gte('tanggal', startDate).lte('tanggal', endDate);
   }
   
   const [resAbsen, resShalat, resSikap, resPelanggaran, resPembinaan, resNilai] = await Promise.all([
-    absenQueryAll, shalatQueryAll, sikapQueryAll, pelanggaranQueryAll, pembinaanQueryAll, nilaiKelasQuery
+    absenQueryAll, shalatQueryAll, sikapQueryAll, pelanggaranQueryAll, pembinaanQueryAll, ambilNilaiOrtu(nilaiKelasQuery)
   ]);
 
   const absenRealtime = {
@@ -662,13 +686,14 @@ async function loadOrtuRealtime() {
     const monthStartStr = `${yyyy}-${mm}-01`;
 
     // Fetch semua data sekaligus
+    const kelasNilaiList = await getKelasNilaiSiswa(nis, kelas);
     const [resAbsenAll, resShalatHari, resSikapHari, resPelanggaranHari, resPembinaanHari, resNilaiKelasHari] = await Promise.all([
       supaClient.from('absensi').select('tanggal, status').eq('nis', nis),
       supaClient.from('shalat').select('tanggal, status, jumlah').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('catatan').select('tanggal, poin, jenis, kategori, catatan').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('pelanggaran').select('tanggal, poin, jenis, perilaku').eq('nis', nis).eq('tanggal', todayStr),
       supaClient.from('pembinaan_wali').select('tanggal, topik, masalah, isi, tindak_lanjut').eq('nis', nis).eq('tanggal', todayStr),
-      supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').eq('kelas', kelas).eq('tanggal', todayStr)
+      ambilNilaiOrtu(supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai').in('kelas', kelasNilaiList).eq('tanggal', todayStr))
     ]);
 
     // Hitung absen realtime dari semua data absen
