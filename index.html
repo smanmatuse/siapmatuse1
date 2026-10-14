@@ -5432,7 +5432,10 @@
         const usernameGuru = App.user.username;
         let query = supaClient.from('nilai').select('*').eq('username_guru', usernameGuru);
         if (kelasFilter) query = query.eq('kelas', kelasFilter);
-        const { data: nilaiData, error: nilaiError } = await query;
+        let nilaiData = null, nilaiError = null;
+        try {
+          nilaiData = (typeof fetchAllPages === 'function') ? await fetchAllPages(query) : (await query).data;
+        } catch (e) { nilaiError = e; }
         if (nilaiError) throw nilaiError;
         if (!nilaiData || nilaiData.length === 0) {
            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#2e7d32; font-weight:bold;">Tuntas! Semua siswa sudah memiliki nilai lengkap (atau belum ada data).</td></tr>';
