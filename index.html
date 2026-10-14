@@ -5629,18 +5629,36 @@
       const mapel = document.getElementById('nilaiMapel').value;
       const bulan = parseInt(document.getElementById('nilaiBulan').value);
       const tahun = parseInt(document.getElementById('nilaiTahun').value);
-      const pesan = `Yakin hapus <b>Penilaian ke-${noPenilaian}</b>?<br><br>Jenis: <b>${jenis}</b> | Kelas: <b>${kelas}</b><br>Mapel: <b>${mapel}</b><br><br><span style="color:#c62828;">Semua nilai siswa pada penilaian ini akan <b>TERHAPUS PERMANEN</b> dan tidak bisa dikembalikan!</span>`;
+
+      // Penghapusan harus per bulan: filter "ALL" ditolak agar nilai di bulan lain tidak ikut terhapus
+      if (isNaN(bulan) || isNaN(tahun)) {
+        showCustomAlert('Pilih <b>bulan dan tahun</b> nilai yang akan dihapus terlebih dahulu pada filter di atas.<br><br>Penghapusan tidak bisa dilakukan saat filter "ALL", agar nilai di bulan lain tidak ikut terhapus.', 'error');
+        return;
+      }
+
+      const pesan = `Yakin hapus <b>Penilaian ke-${noPenilaian}</b>?<br><br>Jenis: <b>${jenis}</b> | Kelas: <b>${kelas}</b><br>Mapel: <b>${mapel}</b><br>Bulan: <b>${bulan}/${tahun}</b><br><br><span style="color:#c62828;">Semua nilai siswa pada penilaian ini akan <b>TERHAPUS PERMANEN</b> dan tidak bisa dikembalikan!</span>`;
       showCustomConfirm(pesan, async function() {
         showLoading(true);
         try {
-          const startDate = new Date(tahun, bulan - 1, 1).toISOString();
-          const endDate = new Date(tahun, bulan, 0).toISOString();
-          const { error } = await supaClient.from('nilai').delete()
+          // Rentang [awal bulan, awal bulan berikutnya) sebagai string, tanpa toISOString (menghindari geser zona waktu)
+          const mm = String(bulan).padStart(2, '0');
+          const nextY = bulan === 12 ? tahun + 1 : tahun;
+          const nextM = String(bulan === 12 ? 1 : bulan + 1).padStart(2, '0');
+          const startDate = `${tahun}-${mm}-01T00:00:00`;
+          const endDate = `${nextY}-${nextM}-01T00:00:00`;
+          const { data, error } = await supaClient.from('nilai').delete()
             .eq('kelas', kelas).eq('matapelajaran', mapel).eq('jenistugas', jenis)
-            .eq('nopenilaian', noPenilaian).gte('tanggal', startDate).lte('tanggal', endDate);
+            .eq('nopenilaian', noPenilaian)
+            .eq('username_guru', App.user.username)
+            .gte('tanggal', startDate).lt('tanggal', endDate)
+            .select('id');
           if (error) throw error;
           showLoading(false);
-          showCustomAlert('Berhasil menghapus data penilaian', 'success');
+          if (!data || data.length === 0) {
+            showCustomAlert('Tidak ada data yang terhapus. Pastikan filter bulan dan tahun sesuai dengan bulan nilai tersebut.', 'error');
+            return;
+          }
+          showCustomAlert(`Berhasil menghapus data penilaian (${data.length} nilai)`, 'success');
           loadSiswaNilai();
         } catch (err) {
           showLoading(false);
