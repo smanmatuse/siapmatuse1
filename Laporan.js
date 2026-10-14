@@ -1996,6 +1996,18 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
 
   const nisList = dataSiswaAll.map(s => s.nis);
   
+  // Kelas moving class yang dipilih tiap siswa (nilai mapel pilihan tersimpan dengan kolom 'kelas' = nama kelas MC)
+  const kelasNilaiPerSiswa = {};
+  const kelasNilaiSemua = new Set([kelas]);
+  dataSiswaAll.forEach(s => { kelasNilaiPerSiswa[s.nis] = new Set([kelas]); });
+  const { data: dataPilihanMC } = await supaClient.from('pilihan_moving_class').select('nis, mapel_moving').in('nis', nisList);
+  (dataPilihanMC || []).forEach(r => {
+    (r.mapel_moving || '').split(',').map(m => m.trim()).filter(Boolean).forEach(m => {
+      if (kelasNilaiPerSiswa[r.nis]) kelasNilaiPerSiswa[r.nis].add(m);
+      kelasNilaiSemua.add(m);
+    });
+  });
+
   // 4. Fetch all data in parallel
   // Bungkus fetchAllPages agar bentuk hasil tetap { data, error } seperti query biasa
   const pagedQuery = (q) => fetchAllPages(q).then(data => ({ data, error: null })).catch(error => ({ data: [], error }));
@@ -2005,7 +2017,7 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     supaClient.from('pelanggaran').select('nis, jenis, perilaku, poin, tindak_lanjut, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     supaClient.from('catatan').select('nis, jenis, kategori, poin, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     // Nilai tidak difilter tanggal (tanggal nilai = awal bulan entry, bukan tanggal kegiatan)
-    pagedQuery(supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').eq('kelas', kelas)),
+    pagedQuery(supaClient.from('nilai').select('nis, matapelajaran, jenistugas, nopenilaian, nilai, kelas').in('kelas', Array.from(kelasNilaiSemua))),
     supaClient.from('absen_ekskul').select('nis, nama_ekskul, status, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd),
     supaClient.from('catatan_ekskul').select('nis, nama_ekskul, catatan, tanggal').in('nis', nisList).gte('tanggal', tglStart).lte('tanggal', tglEnd).order('tanggal', {ascending: true}),
     // Kolom yang benar: isi (bukan isi_pembinaan)
@@ -2065,7 +2077,8 @@ async function fetchDataLaporanSiswa(nis, kelas, bulan, tahun) {
     // Algoritma silang nilai belum lengkap:
     // Kumpulkan semua penugasan unik di kelas, cek apakah siswa punya nilai (baris ada & > 0)
     const penugasanKelas = {};
-    dataNilai.forEach(n => {
+    const kelasMilikSiswa = kelasNilaiPerSiswa[sNis] || new Set([kelas]);
+    dataNilai.filter(n => kelasMilikSiswa.has(n.kelas)).forEach(n => {
       const key = `${n.matapelajaran}||${n.jenistugas}||${n.nopenilaian}`;
       penugasanKelas[key] = true;
     });
